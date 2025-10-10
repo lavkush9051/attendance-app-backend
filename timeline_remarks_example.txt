@@ -1,0 +1,24 @@
+"""
+Example of how the timeline remarks will look:
+
+Initial leave request: remarks = null
+
+After L1 (employee ID 12199) approves:
+remarks = "12199 (Approved) - "Good request, approved for L2 review""
+
+After L2 (employee ID 11326) approves:
+remarks = "12199 (Approved) - "Good request, approved for L2 review"
+11326 (Approved) - "Final approval granted""
+
+Example with rejection:
+After L1 (employee ID 12199) rejects:
+remarks = "12199 (Rejected) - "Insufficient documentation provided""
+
+Example with cancellation:
+After Employee (ID 10001) cancels:
+remarks = "10001 (Cancelled) - "No longer needed due to change in plans""
+
+Example with L1 cancel:
+After L1 manager (ID 12199) cancels:
+remarks = "12199 (Cancelled) - "Cancelled due to operational requirements""
+"""
