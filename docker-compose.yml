@@ -1,0 +1,66 @@
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:13
+    container_name: ameisetech_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: hrms_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d/
+    ports:
+      - "5432:5432"
+    networks:
+      - ameisetech_network
+    restart: unless-stopped
+
+  # FastAPI Backend Application
+  backend:
+    build: .
+    container_name: ameisetech_backend
+    environment:
+      - DATABASE_URL=postgresql://postgres:admin@db:5432/hrms_db
+      - PYTHONPATH=/app
+    volumes:
+      - ./face_data:/app/face_data
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    networks:
+      - ameisetech_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Optional: pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: ameisetech_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@ameisetech.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
+    networks:
+      - ameisetech_network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  pgadmin_data:
+
+networks:
+  ameisetech_network:
+    driver: bridge

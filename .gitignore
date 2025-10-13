@@ -25,6 +25,7 @@ MANIFEST
 venv/
 env/
 ENV/
+.venv/
 
 # Environment Variables
 .env
@@ -32,6 +33,9 @@ ENV/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.*
+!.env.example
+!.env.prod.example
 
 # Database
 *.db

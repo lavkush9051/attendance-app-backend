@@ -73,6 +73,23 @@ app.add_middleware(
 # Include auth routes (existing)
 app.include_router(auth_router)
 
+# Health check endpoint for Docker
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for container orchestration"""
+    return {"status": "healthy", "message": "AmeTech HRMS API is running"}
+
+# Root endpoint
+@app.get("/")
+async def root():
+    """Root endpoint with API information"""
+    return {
+        "message": "AmeTech HRMS API",
+        "version": "1.0.0",
+        "status": "running",
+        "health_check": "/health"
+    }
+
 # Include modular API routes
 app.include_router(clock.router, prefix="/api", tags=["clock"])
 app.include_router(attendance.router, prefix="/api", tags=["attendance"])  
