@@ -2,10 +2,13 @@ from typing import List, Optional, Dict, Any
 import numpy as np
 from app.repositories.face_repo import FaceRepository
 from app.schemas.faces import FaceRegistrationRequest, FaceRegistrationResponse, FaceVerificationRequest, FaceVerificationResponse
+from app.face_engine import FaceEngine
+import base64
 
 class FaceService:
     def __init__(self, face_repo: FaceRepository):
         self.face_repo = face_repo
+        self.face_engine = FaceEngine()
 
     def register_employee_faces(self, request: FaceRegistrationRequest) -> FaceRegistrationResponse:
         """Register face embeddings for an employee (4 images required)"""
@@ -40,8 +43,10 @@ class FaceService:
             # Store face embeddings in database
             created_faces = self.face_repo.create_multiple_faces(
                 emp_id=request.emp_id,
-                embeddings=face_embeddings
-            )
+                name=request.employee_name,
+                embeddings=face_embeddings,
+                # name=request.name
+                                        )
 
             return FaceRegistrationResponse(
                 success=True,
@@ -173,41 +178,59 @@ class FaceService:
         except Exception as e:
             raise Exception(f"Service error while generating face analytics: {str(e)}")
 
+    # def _extract_face_embedding(self, face_image_base64: str) -> Optional[np.ndarray]:
+    #     """Extract face embedding from base64 image (placeholder implementation)"""
+    #     try:
+    #         # image_bytes = base64.b64decode(face_image_base64)
+    #         # This is a placeholder implementation
+    #         # In a real system, you would:
+    #         # 1. Decode base64 image
+    #         # 2. Use face recognition library (like face_recognition, DeepFace, etc.)
+    #         # 3. Extract face embedding/encoding
+    #         # 4. Return the embedding as numpy array
+            
+    #         # For now, returning a random embedding for demonstration
+    #         import base64
+    #         import hashlib
+            
+    #         Create a deterministic "embedding" based on image hash
+    #         image_data = base64.b64decode(face_image_base64)
+    #         image_hash = hashlib.md5(image_data).hexdigest()
+            
+    #         # Convert hash to numeric values (128 dimensional embedding)
+    #         embedding = []
+    #         for i in range(0, len(image_hash), 2):
+    #             hex_pair = image_hash[i:i+2]
+    #             embedding.append(int(hex_pair, 16) / 255.0)  # Normalize to 0-1
+            
+    #         # Pad or truncate to 128 dimensions
+    #         while len(embedding) < 128:
+    #             embedding.append(0.0)
+    #         embedding = embedding[:128]
+            
+    #         return np.array(embedding, dtype=np.float32)
+
+    #     except Exception as e:
+    #         print(f"Error extracting face embedding: {str(e)}")
+    #         return None
+    
     def _extract_face_embedding(self, face_image_base64: str) -> Optional[np.ndarray]:
-        """Extract face embedding from base64 image (placeholder implementation)"""
+        """Extract 512-D face embedding using InsightFace"""
         try:
-            # This is a placeholder implementation
-            # In a real system, you would:
-            # 1. Decode base64 image
-            # 2. Use face recognition library (like face_recognition, DeepFace, etc.)
-            # 3. Extract face embedding/encoding
-            # 4. Return the embedding as numpy array
-            
-            # For now, returning a random embedding for demonstration
-            import base64
-            import hashlib
-            
-            # Create a deterministic "embedding" based on image hash
-            image_data = base64.b64decode(face_image_base64)
-            image_hash = hashlib.md5(image_data).hexdigest()
-            
-            # Convert hash to numeric values (128 dimensional embedding)
-            embedding = []
-            for i in range(0, len(image_hash), 2):
-                hex_pair = image_hash[i:i+2]
-                embedding.append(int(hex_pair, 16) / 255.0)  # Normalize to 0-1
-            
-            # Pad or truncate to 128 dimensions
-            while len(embedding) < 128:
-                embedding.append(0.0)
-            embedding = embedding[:128]
-            
-            return np.array(embedding, dtype=np.float32)
+            # Decode base64 to bytes
+            image_bytes = base64.b64decode(face_image_base64)
+
+            # Extract embedding from FaceEngine
+            descriptor = self.face_engine.extract_descriptor(image_bytes)
+            if descriptor is None:
+                raise Exception("No face detected or extraction failed")
+
+            return np.array(descriptor, dtype=np.float32)
 
         except Exception as e:
-            print(f"Error extracting face embedding: {str(e)}")
+            print(f"[ERROR] _extract_face_embedding failed: {e}")
             return None
-
+        
     def _validate_face_consistency(self, embeddings: List[np.ndarray]) -> bool:
         """Validate that all face embeddings are from the same person"""
         try:

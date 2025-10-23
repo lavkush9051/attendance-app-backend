@@ -42,13 +42,16 @@ class FaceRepository:
         try:
             face_records = []
             for embedding in embeddings:
-                face_record = FaceUser(
-                    name=name,
-                    face_user_emp_id=emp_id,
-                    embedding=embedding
-                )
-                self.db.add(face_record)
-                face_records.append(face_record)
+                # ✅ Convert numpy.float32 → regular float
+              clean_embedding = [float(x) for x in embedding]
+              
+              face_record = FaceUser(
+                name=name,
+                face_user_emp_id=emp_id,
+                embedding=clean_embedding
+              )
+              self.db.add(face_record)
+              face_records.append(face_record)
             
             self.db.commit()
             
