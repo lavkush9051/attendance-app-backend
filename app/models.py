@@ -70,6 +70,8 @@ class LeaveRequest(Base):
     leave_req_l2_id = Column(Integer)
     remarks = Column(Text)
     leave_req_applied_dt = Column(Date)
+    sap_sync_status = Column(String(20), nullable=False, server_default="PENDING")
+    sap_sync_timestamp = Column(DateTime(timezone=True))
 
 class AttendanceRequest(Base):
     __tablename__ = 'attendance_regularization_tbl'
@@ -87,7 +89,7 @@ class AttendanceRequest(Base):
     art_shift = Column(String(20),
                              ForeignKey('emp_shift_tbl.est_shift_abbrv'),
                              nullable=False, index=True)
-    art_applied_date = Column(DateTime)
+    art_applied_date = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 class ClockInClockOut(Base):
     __tablename__ = 'clockin_clockout_tbl'
@@ -100,6 +102,7 @@ class ClockInClockOut(Base):
     cct_shift_abbrv = Column(String(12),
                              ForeignKey('emp_shift_tbl.est_shift_abbrv'),
                              nullable=False, index=True)
+    cct_synced_with_sap = Column(String, nullable=False, server_default="N")
     # relationship to shift
     shift = relationship(
         "EmpShift",
@@ -113,6 +116,7 @@ class LeaveType(Base):
     lt_abrev = Column(String(5))
     lt_leave_type = Column(String(30))
     lt_total = Column(Integer)
+    sap_leave_id = Column(Integer)
 
 class LeaveBalance(Base):
     __tablename__ = "leave_tbl"

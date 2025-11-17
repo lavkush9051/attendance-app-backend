@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Form, Body, Query, Depends, HTTPException, status
+from fastapi import APIRouter, Form, Body, Query, Depends, HTTPException, status, Request
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 from datetime import datetime, date, timedelta
@@ -151,7 +151,7 @@ def get_attendance_regularization_requests(
                         "status": (getattr(request, 'status', '') or 'pending').lower(),
                         "l1_status": (getattr(request, 'l1_status', '') or 'pending').lower(),
                         "l2_status": (getattr(request, 'l2_status', '') or 'pending').lower(),
-                        "applied_date": getattr(request, 'request_date', '').isoformat() if hasattr(getattr(request, 'request_date', None), 'isoformat') else '',
+                        "applied_date": getattr(request, 'applied_date', '').isoformat() if hasattr(getattr(request, 'applied_date', None), 'isoformat') else '',
                         "approved_by": "",  # Not available in current schema
                         "approved_date": "",  # Not available in current schema
                         "rejection_reason": "",  # Not available in current schema
@@ -187,7 +187,7 @@ def get_attendance_regularization_requests(
                     "status": request.status.lower() if request.status else "pending",
                     "l1_status": request.l1_status.lower() if request.l1_status else "pending",
                     "l2_status": request.l2_status.lower() if request.l2_status else "pending",
-                    "applied_date": request.request_date.isoformat(),  # Using request_date as applied_date
+                    "applied_date": request.applied_date.isoformat() if request.applied_date else "",
                     "approved_by": "",  # Not available in current schema
                     "approved_date": "",  # Not available in current schema
                     "rejection_reason": "",  # Not available in current schema
@@ -290,6 +290,40 @@ async def attendance_action(
         print(f"[ERROR] /attendance-request/action exception: {error_result}")
         return JSONResponse(status_code=500, content=error_result)
 
+@router.delete("/attendance-regularization/{request_id}")
+def delete_attendance_regularization_request(
+    request_id: int,
+    request: Request,
+    current_user_emp_id: int = Depends(get_current_user_emp_id),
+    attendance_service: AttendanceService = Depends(get_attendance_service)
+):
+    """Cancel (delete) a pending attendance regularization request owned by the user.
+    Only allowed if status is Pending and the requester is the owner.
+    """
+    print(f"[LOG] DELETE /attendance-regularization/{request_id} called by emp_id={current_user_emp_id}")
+    try:
+        # Debug incoming headers to verify CORS / credential behavior
+        from fastapi import Request
+        # Inject request via dependency-less approach using global (FastAPI provides it via context) - fallback
+        # Proper way: accept Request as parameter; updating signature for better diagnostics
+        # Log request headers for CORS diagnostics
+        print(f"[CANCEL DEBUG] Origin: {request.headers.get('origin')}")
+        print(f"[CANCEL DEBUG] Authorization present: {'authorization' in request.headers}")
+        print(f"[CANCEL DEBUG] Cookie present: {bool(request.headers.get('cookie'))}")
+        # Service layer enforces ownership and Pending status
+        success = attendance_service.delete_request(request_id, current_user_emp_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Request not found or could not be deleted")
+        result = {"status": "success", "message": "Request cancelled"}
+        print(f"[LOG] DELETE /attendance-regularization/{request_id} success: {result}")
+        return JSONResponse(content=result)
+    except HTTPException as he:
+        print(f"[ERROR] DELETE /attendance-regularization/{request_id} HTTPException: {he.detail}")
+        raise
+    except Exception as e:
+        print(f"[ERROR] DELETE /attendance-regularization/{request_id} exception: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/attendance")
 def get_attendance(
     emp_id: int = Query(...),
@@ -333,7 +367,7 @@ def get_attendance(
         records = clock_service.get_employee_attendance_records(
             emp_id, start_date, end_date
         )
-        print("[Debug] Records fetched:", records)
+        #print("[Debug] Records fetched:", records)
         present_days = []
         total_working_mins = 0
         total_late_mins = 0
@@ -374,13 +408,13 @@ def get_attendance(
         while current_date <= end_date:
             weekday = current_date.weekday()
             is_working_day = weekday < 5  # Monday=0, Friday=4 (exclude Sat/Sun)
-            print(f"[DEBUG] Date: {current_date}, Weekday: {weekday}, IsWorkingDay: {is_working_day}")
+            #print(f"[DEBUG] Date: {current_date}, Weekday: {weekday}, IsWorkingDay: {is_working_day}")
             if is_working_day:
                 total_working += 1
             current_date += timedelta(days=1)
         
         absent = total_working - num_present
-        print(f"[DEBUG] Final calculation: total_working={total_working}, num_present={num_present}, absent={absent}")
+        #print(f"[DEBUG] Final calculation: total_working={total_working}, num_present={num_present}, absent={absent}")
 
         average_working = "-"
         average_late = "-"

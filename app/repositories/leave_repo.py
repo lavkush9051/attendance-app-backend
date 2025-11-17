@@ -1,5 +1,5 @@
 from typing import List, Optional, Tuple, Dict, Any
-from datetime import date
+from datetime import date, datetime
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import or_, and_, func
@@ -221,3 +221,34 @@ class LeaveRepository:
             return query.order_by(LeaveRequest.leave_req_from_dt.asc()).all()
         except SQLAlchemyError as e:
             raise Exception(f"Database error while fetching pending leaves: {str(e)}")
+
+    def get_pending_sap_sync(self, target_date: date) -> List[Tuple[LeaveRequest, Employee]]:
+        """Get approved leaves starting on target_date that haven't been synced to SAP yet.
+        
+        Returns leaves where:
+        - leave_req_status = 'Approved'
+        - leave_req_from_dt = target_date
+        - sap_sync_status = 'PENDING'
+        """
+        try:
+            return self.db.query(LeaveRequest, Employee).join(
+                Employee, LeaveRequest.leave_req_emp_id == Employee.emp_id
+            ).filter(
+                LeaveRequest.leave_req_status == "Approved",
+                LeaveRequest.leave_req_from_dt == target_date,
+                LeaveRequest.sap_sync_status == "PENDING"
+            ).all()
+        except SQLAlchemyError as e:
+            raise Exception(f"Database error while fetching pending SAP sync leaves: {str(e)}")
+
+    def mark_synced_with_sap(self, leave_req_id: int) -> None:
+        """Mark leave request as synced with SAP by updating status to SENT and recording timestamp."""
+        try:
+            req = self.get_by_id(leave_req_id)
+            if req:
+                req.sap_sync_status = "SENT"
+                req.sap_sync_timestamp = datetime.utcnow()
+                self.db.commit()
+        except SQLAlchemyError as e:
+            self.db.rollback()
+            raise Exception(f"Database error while marking leave as synced: {str(e)}")

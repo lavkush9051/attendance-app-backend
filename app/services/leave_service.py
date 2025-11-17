@@ -28,7 +28,9 @@ class LeaveService:
             return
             
         # Format: 12199 (Approved) - "remarks"
-        timeline_entry = f"{emp_id} ({action}) - \"{remark}\""
+        # timeline_entry = f"{emp_id} ({action}) - \"{remark}\""
+        emp_name = self.employee_repo.get_by_id(emp_id).emp_name
+        timeline_entry = f"{emp_name} ({action}) - \"{remark}\""
         
         if leave_req.remarks:
             # Add to existing remarks with newline
@@ -50,7 +52,7 @@ class LeaveService:
             if request.from_date > request.to_date:
                 raise Exception("From date cannot be after to date")
 
-            if request.from_date < date.today():
+            if request.from_date < date.today() and request.leave_type.lower() != 'medical leave':
                 raise Exception("Cannot apply for past dates")
 
             # Calculate total days using business days (exclude weekends)
@@ -142,7 +144,8 @@ class LeaveService:
                     l1_status=req[0].leave_req_l1_status,
                     l2_status=req[0].leave_req_l2_status,
                     created_at=req[0].leave_req_id,
-                    remarks=req[0].remarks
+                    remarks=req[0].remarks,
+                    applied_date=req[0].leave_req_applied_dt if hasattr(req[0], 'leave_req_applied_dt') and req[0].leave_req_applied_dt else None
                 ) for req in requests_with_employee
             ]
 
@@ -190,7 +193,8 @@ class LeaveService:
                     can_approve=can_approve,
                     action_level=action_level,
                     created_at=req.leave_req_id,
-                    remarks=req.remarks or ""
+                    remarks=req.remarks or "",
+                    applied_date=req.leave_req_applied_dt if hasattr(req, 'leave_req_applied_dt') and req.leave_req_applied_dt else None,
                 ))
 
             return results

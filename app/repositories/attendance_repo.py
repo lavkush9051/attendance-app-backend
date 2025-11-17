@@ -1,5 +1,5 @@
 from typing import List, Optional, Tuple
-from datetime import date, time
+from datetime import date, time, datetime
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from app.models import AttendanceRequest, Employee
@@ -70,6 +70,17 @@ class AttendanceRepository:
               clock_out: time, reason: str, shift: str, l1_id: int, l2_id: Optional[int]) -> AttendanceRequest:
         """Create a new attendance regularization request"""
         try:
+            # Normalize shift to abbreviation expected by FK (emp_shift_tbl.est_shift_abbrv)
+            # "General" (full name) should map to "GEN". Accept either already-abbreviated value.
+            normalized_shift = shift
+            if shift:
+                # Exact match for General (case-insensitive)
+                if shift.lower() == "general":
+                    normalized_shift = "GEN"
+                # If shift is provided as full phrase containing General (e.g. "General Shift")
+                elif "general" in shift.lower() and len(shift) > 6:
+                    normalized_shift = "GEN"
+            # Future mappings can be added here (e.g. "Shift I" -> "S1")
             attendance_req = AttendanceRequest(
                 art_emp_id=emp_id,
                 art_date=request_date,
@@ -82,7 +93,8 @@ class AttendanceRepository:
                 art_l2_status="Not Required" if l2_id is None else "Pending",
                 art_l1_id=l1_id,
                 art_l2_id=l2_id,  # This will be None for L1-only workflow
-                art_shift=shift
+                art_shift=normalized_shift,
+                art_applied_date=datetime.utcnow()
             )
             
             self.db.add(attendance_req)

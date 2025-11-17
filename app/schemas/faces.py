@@ -4,6 +4,7 @@ from typing import Optional, List
 # Request Schemas
 class FaceRegistrationRequest(BaseModel):
     emp_id: int
+    employee_name: str
     face_images: List[str]  # List of base64 encoded images
     
     @validator('emp_id')

@@ -1,8 +1,11 @@
 from typing import List, Optional, Dict, Any, Tuple
 from datetime import date, time
+import logging
 from app.repositories.attendance_repo import AttendanceRepository
 from app.repositories.employee_repo import EmployeeRepository
 from app.repositories.clock_repo import ClockRepository
+
+logger = logging.getLogger(__name__)
 from app.schemas.attendance import (
     AttendanceRegularizationCreate, AttendanceRequestResponse,
     AttendanceRequestDetailResponse, AttendanceStatusUpdate
@@ -15,6 +18,29 @@ class AttendanceService:
         self.attendance_repo = attendance_repo
         self.employee_repo = employee_repo
         self.clock_repo = clock_repo
+        
+    async def get_employee_attendance(self, emp_id: int, date: date) -> Optional[Dict[str, Any]]:
+        """Get employee attendance for a specific date"""
+        try:
+            clock_record = self.clock_repo.get_by_employee_and_date(emp_id, date)
+            if not clock_record:
+                return None
+                
+            return {
+                "clock_in": clock_record.cct_clockin_time,
+                "clock_out": clock_record.cct_clockout_time
+            }
+        except Exception as e:
+            logger.error(f"Error getting attendance: {str(e)}")
+            return None
+            
+    async def mark_synced_with_sap(self, emp_id: int, date: date) -> bool:
+        """Mark attendance record as synced with SAP"""
+        try:
+            return self.clock_repo.mark_synced_with_sap(emp_id, date)
+        except Exception as e:
+            logger.error(f"Error marking sync status: {str(e)}")
+            return False
 
     def create_regularization_request(self, request: AttendanceRegularizationCreate, 
                                     requesting_emp_id: int) -> AttendanceRequestResponse:
@@ -96,8 +122,9 @@ class AttendanceService:
                     status=req[0].art_status,
                     l1_status=req[0].art_l1_status,
                     l2_status=req[0].art_l2_status,
-                    shift=req[0].art_shift,
-                    created_at=req[0].art_id
+                    shift=str(req[0].art_shift) if req[0].art_shift is not None else "",
+                    created_at=req[0].art_id,
+                    applied_date=getattr(req[0], 'art_applied_date', None)
                 ) for req in requests_with_employee
             ]
 
@@ -138,9 +165,10 @@ class AttendanceService:
                     status=req.art_status,
                     l1_status=req.art_l1_status,
                     l2_status=req.art_l2_status,
-                    shift=req.art_shift,
+                    shift=str(req.art_shift) if req.art_shift is not None else "",
                     can_approve=can_approve,
                     action_level=action_level,
+                    applied_date=req.art_applied_date,
                     created_at=req.art_id
                 ))
 
@@ -184,12 +212,21 @@ class AttendanceService:
                 # If L1 approves, push the data to clockin_clockout_tbl
                 if status_update.status == "approve":
                     try:
+                        # Defensive: ensure shift abbreviation is a plain string
+                        shift_abbr = str(updated_request.art_shift) if updated_request.art_shift is not None else None
+                        if not shift_abbr:
+                            raise Exception("Missing shift abbreviation on attendance request")
+                        if not updated_request.art_date:
+                            raise Exception("Missing attendance date on attendance request")
+                        if not updated_request.art_clockin_time and not updated_request.art_clockout_time:
+                            raise Exception("Both clock-in and clock-out times are empty")
+                        print(f"[DEBUG] Pushing to clock table: emp={updated_request.art_emp_id}, date={updated_request.art_date}, in={updated_request.art_clockin_time}, out={updated_request.art_clockout_time}, shift={shift_abbr}")
                         self.clock_repo.create_or_update_record(
                             emp_id=updated_request.art_emp_id,
                             record_date=updated_request.art_date,
                             clockin_time=updated_request.art_clockin_time,
                             clockout_time=updated_request.art_clockout_time,
-                            shift=updated_request.art_shift
+                            shift=shift_abbr
                         )
                     except Exception as clock_error:
                         # Log the error but don't fail the approval process

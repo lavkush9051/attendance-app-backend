@@ -18,6 +18,16 @@ class ClockRepository:
             ).first()
         except SQLAlchemyError as e:
             raise Exception(f"Database error while fetching clock-in record: {str(e)}")
+            
+    def get_by_employee_and_date(self, emp_id: int, record_date: date) -> Optional[ClockInClockOut]:
+        """Get clock record for employee on a specific date"""
+        try:
+            return self.db.query(ClockInClockOut).filter(
+                ClockInClockOut.cct_emp_id == emp_id,
+                ClockInClockOut.cct_date == record_date
+            ).first()
+        except SQLAlchemyError as e:
+            raise Exception(f"Database error while fetching clock record: {str(e)}")
 
     def create_clockin(self, emp_id: int, today: date, clockin_time: time, shift: str) -> ClockInClockOut:
         """Create clock-in record or return existing one (keeps first clock-in time)"""
@@ -38,7 +48,7 @@ class ClockRepository:
                     cct_emp_id=emp_id,
                     cct_date=today,
                     cct_clockin_time=clockin_time,
-                    cct_shift_abbrv=shift
+                    cct_shift_abbrv=shift,
                 )
                 self.db.add(clockin_record)
                 self.db.commit()
@@ -119,3 +129,20 @@ class ClockRepository:
         except SQLAlchemyError as e:
             self.db.rollback()
             raise Exception(f"Database error while creating/updating clock record: {str(e)}")
+            
+    def mark_synced_with_sap(self, emp_id: int, record_date: date) -> bool:
+        """Mark attendance record as synced with SAP"""
+        try:
+            record = self.db.query(ClockInClockOut).filter(
+                ClockInClockOut.cct_emp_id == emp_id,
+                ClockInClockOut.cct_date == record_date
+            ).first()
+            
+            if record:
+                record.cct_synced_with_sap = "Y"
+                self.db.commit()
+                return True
+            return False
+        except SQLAlchemyError as e:
+            self.db.rollback()
+            raise Exception(f"Database error while marking SAP sync status: {str(e)}")

@@ -127,7 +127,8 @@ async def update_employees_weekoff(
         
         for emp_id in emp_ids_int:
             try:
-                weekoff_data = WeekoffUpdateRequest(weekoff=weekoff)
+                # Provide emp_ids as well to satisfy WeekoffUpdateRequest schema
+                weekoff_data = WeekoffUpdateRequest(emp_ids=[emp_id], weekoff=weekoff)
                 updated_emp = employee_service.update_employee_weekoff(emp_id, weekoff_data)
                 if updated_emp:
                     updated_count += 1
