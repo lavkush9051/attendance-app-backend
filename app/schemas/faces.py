@@ -4,8 +4,9 @@ from typing import Optional, List
 # Request Schemas
 class FaceRegistrationRequest(BaseModel):
     emp_id: int
+    face_images: List[str] 
     employee_name: str
-    face_images: List[str]  # List of base64 encoded images
+    # name:str # List of base64 encoded images
     
     @validator('emp_id')
     def validate_emp_id(cls, v):
@@ -21,7 +22,8 @@ class FaceRegistrationRequest(BaseModel):
 
 class FaceVerificationRequest(BaseModel):
     emp_id: int
-    face_image: str  # Base64 encoded image
+    face_image: str 
+    # name:str # Base64 encoded image
     
     @validator('emp_id')
     def validate_emp_id(cls, v):

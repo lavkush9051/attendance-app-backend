@@ -41,6 +41,7 @@ ENV/
 *.db
 *.sqlite3
 
+
 # Node.js (for frontend)
 node_modules/
 npm-debug.log*
