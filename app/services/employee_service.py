@@ -1,10 +1,22 @@
 from typing import List, Optional, Dict, Any
+import logging
 from app.repositories.employee_repo import EmployeeRepository
 from app.schemas.employees import EmployeeResponse, WeekoffUpdateRequest
+
+logger = logging.getLogger(__name__)
 
 class EmployeeService:
     def __init__(self, employee_repo: EmployeeRepository):
         self.employee_repo = employee_repo
+        
+    async def get_employees_by_shift(self, shift_id: int) -> List[Dict[str, Any]]:
+        """Get all employees assigned to a specific shift"""
+        try:
+            employees = await self.employee_repo.get_by_shift(shift_id)
+            return [emp for emp in employees]  # employees is already a list of dicts
+        except Exception as e:
+            logger.error(f"Error getting employees by shift: {str(e)}")
+            return []
 
     def get_all_employees(self) -> List[EmployeeResponse]:
         """Get all employees with proper response format"""
@@ -32,14 +44,17 @@ class EmployeeService:
             if not employee:
                 raise Exception(f"Employee with ID {emp_id} not found")
 
-            # Update weekoff
-            updated_employee = self.employee_repo.update_weekoff(
-                emp_id=emp_id,
+            # Update weekoff - repository expects a list of emp_ids and returns number of rows updated
+            updated_count = self.employee_repo.update_weekoff(
+                emp_ids=[emp_id],
                 weekoff=weekoff_data.weekoff
             )
 
-            if updated_employee:
+            if updated_count and updated_count > 0:
+                # Fetch the updated employee record and return a response model
+                updated_employee = self.employee_repo.get_by_id(emp_id)
                 return EmployeeResponse.from_orm(updated_employee)
+
             return None
 
         except Exception as e:

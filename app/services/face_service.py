@@ -21,7 +21,13 @@ class FaceService:
             existing_faces = self.face_repo.get_by_emp_id(request.emp_id)
             if existing_faces:
                 # Delete existing faces before registering new ones
-                self.face_repo.delete_by_emp_id(request.emp_id)
+                #self.face_repo.delete_by_emp_id(request.emp_id)
+                return FaceRegistrationResponse(
+                    success=False,
+                    message="Faces already registered for this employee",
+                    employee_id=request.emp_id,
+                    faces_registered=len(existing_faces)
+                )
 
             # Process each face image and extract embeddings
             face_embeddings = []

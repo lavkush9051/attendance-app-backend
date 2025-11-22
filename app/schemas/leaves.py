@@ -118,6 +118,7 @@ class LeaveRequestResponse(BaseModel):
     l2_status: str
     created_at: int  # Using ID as placeholder
     remarks: Optional[str] = None
+    applied_date: Optional[date] = None
     
     class Config:
         from_attributes = True
@@ -140,6 +141,7 @@ class LeaveRequestDetailResponse(BaseModel):
     action_level: Optional[str]  # "L1" or "L2"
     created_at: int
     remarks : Optional[str]
+    applied_date: Optional[date] = None
     
     class Config:
         from_attributes = True

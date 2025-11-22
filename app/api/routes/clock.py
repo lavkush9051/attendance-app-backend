@@ -46,20 +46,20 @@ async def clockin(
     
     print(f"[LOG] Clock-in attempt by emp_id {face_user_emp_id} for shift {shift} at location ({lat}, {lon})")
     
-    # --- 1. Geofencing Validation ---
-    # is_location_valid = is_within_geofence(
-    #     user_lat=lat,
-    #     user_lon=lon,
-    #     office_lat=OFFICE_LATITUDE,
-    #     office_lon=OFFICE_LONGITUDE,
-    #     radius_meters=GEOFENCE_RADIUS_METERS
-    # )
-
-    # if not is_location_valid:
-    #     return {
-    #         "status": "failed",
-    #         "reason": f"Clock-in failed. You must be within {GEOFENCE_RADIUS_METERS} meters of the office."
-    #     }
+    # --- 1. Geofencing Validation (only for emp_id=10001) ---
+    # if int(face_user_emp_id) == 10001:
+    #     is_location_valid = is_within_geofence(
+    #         user_lat=lat,
+    #         user_lon=lon,
+    #         office_lat=OFFICE_LATITUDE,
+    #         office_lon=OFFICE_LONGITUDE,
+    #         radius_meters=20  # 20 meters for strict geofence
+    #     )
+    #     if not is_location_valid:
+    #         return {
+    #             "status": "failed",
+    #             "reason": f"Clock-in failed. You must be within 20 meters of the office."
+    #         }
     
     # --- 2. Face Recognition ---
     content = await file.read()

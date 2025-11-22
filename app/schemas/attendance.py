@@ -1,5 +1,5 @@
 from pydantic import BaseModel, validator
-from datetime import date, time
+from datetime import date, time, datetime
 from typing import Optional, List
 from enum import Enum
 
@@ -93,6 +93,7 @@ class AttendanceRequestResponse(BaseModel):
     l1_status: str
     l2_status: str
     shift: str
+    applied_date: Optional[datetime] = None
     created_at: int  # Using ID as placeholder timestamp
     
     class Config:
@@ -114,6 +115,7 @@ class AttendanceRequestDetailResponse(BaseModel):
     shift: str
     can_approve: bool
     action_level: Optional[str]  # "L1" or "L2"
+    applied_date: Optional[datetime] = None
     created_at: int
     
     class Config:

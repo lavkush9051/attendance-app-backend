@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Query, Response, Depends, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from typing import Dict, Any, Optional
 from app.dependencies import (
+    get_clock_service,
     get_current_user_emp_id, 
     validate_admin_access,
     get_attendance_service,
@@ -11,6 +12,11 @@ from app.services.attendance_service import AttendanceService
 from app.services.employee_service import EmployeeService
 import pandas as pd
 import io
+from app.database import get_db
+from app.repositories.clock_repo import ClockRepository
+from app.services.clock_service import ClockService
+
+            
 
 router = APIRouter()
 
@@ -67,6 +73,197 @@ def get_reporting_levels(
     except Exception as e:
         print(f"[ERROR] /reporting-levels exception: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/attendance/download")
+def download_attendance_report(
+    emp_id : Optional[str] = Query(None),
+    start_date : str = Query(...),
+    end_date : str = Query(...),
+    employee_service: EmployeeService = Depends(get_employee_service),
+    attendance_service: AttendanceService = Depends(get_attendance_service),
+    clock_service: ClockService = Depends(get_clock_service),
+    current_emp_id: int = Depends(get_current_user_emp_id)
+):
+    """Get attendance report data and download as Excel"""
+    print(f"[LOG] /reports/attendance/download called for emp_id={emp_id}, start_date={start_date}, end_date={end_date}")
+    
+    all_records = []
+    
+    # 1. Create the full date range for the report
+    # We will loop through this, not the database records
+    try:
+        date_range = pd.date_range(start=start_date, end=end_date, freq='D')
+    except Exception as e:
+        print(f"[ERROR] Invalid date range: {e}")
+        raise HTTPException(status_code=422, detail="Invalid start_date or end_date format.")
+
+    if emp_id and employee_service.get_employee_by_id(emp_id):
+        # --- Single Employee ---
+        employee = employee_service.get_employee_by_id(emp_id)
+        if not employee:
+            print(f"[ERROR] Employee {emp_id} not found")
+            raise HTTPException(status_code=404, detail="Employee not found")
+
+        # 2. Get all records for this employee in the range ONCE
+        records = clock_service.get_employee_attendance_records(emp_id, start_date, end_date)
+        
+        # 3. Create a fast lookup dictionary (key=date string)
+        # We assume record.date is a string 'YYYY-MM-DD' or a date object
+        records_by_date = {}
+        for r in records:
+            date_key = r.date.strftime('%Y-%m-%d') if hasattr(r.date, 'strftime') else str(r.date)
+            records_by_date[date_key] = r
+
+        # 4. Loop through the CALENDAR, not the records
+        for date_obj in date_range:
+            date_str = date_obj.strftime('%Y-%m-%d')
+            record = records_by_date.get(date_str) # Check if we have a record
+            
+            if record:
+                # 5. If record exists, mark as Present
+                all_records.append({
+                    "Employee ID": emp_id,
+                    "Employee Name": employee.emp_name,
+                    "Date": date_str,
+                    "Status": "Present", # <-- New Column
+                    "Clock In": record.clockin_time,
+                    "Clock Out": record.clockout_time
+                   
+                })
+            else:
+                # 6. If no record, mark as Absent
+                all_records.append({
+                    "Employee ID": emp_id,
+                    "Employee Name": employee.emp_name,
+                    "Date": date_str,
+                    "Status": "Absent", # <-- New Column
+                    "Clock In": "-",
+                    "Clock Out": "-",
+                   
+                })
+        
+    else:
+        # --- All Employees ---
+        all_employees = employee_service.get_all_employees()
+        non_manager_employees = [
+            emp for emp in all_employees 
+            if hasattr(emp, 'emp_designation') and emp.emp_designation != "MANAGER"
+        ]
+
+        for emp in non_manager_employees:
+            # 2. Get all records for THIS employee in the range
+            records = clock_service.get_employee_attendance_records(emp.emp_id, start_date, end_date)
+            
+            # 3. Create a fast lookup dictionary for THIS employee
+            records_by_date = {}
+            for r in records:
+                date_key = r.date.strftime('%Y-%m-%d') if hasattr(r.date, 'strftime') else str(r.date)
+                records_by_date[date_key] = r
+
+            # 4. Loop through the CALENDAR for this employee
+            for date_obj in date_range:
+                date_str = date_obj.strftime('%Y-%m-%d')
+                record = records_by_date.get(date_str)
+                
+                if record:
+                    # 5. If record exists, mark as Present
+                    all_records.append({
+                        "Employee ID": emp.emp_id,
+                        "Employee Name": emp.emp_name,
+                        "Date": date_str,
+                        "Status": "Present", # <-- New Column
+                        "Clock In": record.clockin_time,
+                        "Clock Out": record.clockout_time
+                    })
+                else:
+                    # 6. If no record, mark as Absent
+                    all_records.append({
+                        "Employee ID": emp.emp_id,
+                        "Employee Name": emp.emp_name,
+                        "Date": date_str,
+                        "Status": "Absent", # <-- New Column
+                        "Clock In": "-",
+                        "Clock Out": "-"
+                    })
+
+    # --- (Your DataFrame and StreamingResponse logic is correct) ---
+    
+    # We assign all_records to report_data here, after all loops are done
+    report_data = all_records
+    
+    if not report_data:
+        # This check is still good, though now it should only be empty
+        # if 'All Employees' is selected and there are no employees.
+        print("[LOG] No data found for report.")
+        raise HTTPException(status_code=404, detail="No attendance records found for the selected criteria.")
+
+    df = pd.DataFrame(report_data)
+    
+    # Re-order columns to be more logical
+    columns = [
+        "Employee ID", 
+        "Employee Name", 
+        "Date", 
+        "Status", 
+        "Clock In", 
+        "Clock Out"
+    ]
+    # Ensure we only include columns that exist, in the desired order
+    df = df.reindex(columns=[col for col in columns if col in df.columns])
+
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='Attendance Report')
+        # NO writer.save() here
+# --- 🎨 Start of New Formatting Code ---
+
+        # Get the workbook and worksheet objects
+        workbook = writer.book
+        worksheet = writer.sheets['Attendance Report']
+
+        # Define a format for 'Absent' cells (light red fill, dark red text)
+        absent_format = workbook.add_format({
+            'bg_color': '#FFC7CE',    # Light red fill
+            'font_color': '#9C0006'  # Dark red text
+        })
+
+        # Find the column index for "Status"
+        # This is better than hard-coding 'D'
+        try:
+            status_col_index = df.columns.get_loc('Status')
+        except KeyError:
+            status_col_index = -1 # Skip formatting if column not found
+
+        if status_col_index != -1:
+            # Apply the conditional format to the "Status" column
+            # We apply it from the first data row (1) to the last data row (len(df))
+            worksheet.conditional_format(
+                1, status_col_index,              # First data row, Status column
+                len(df), status_col_index,        # Last data row, Status column
+                {
+                    'type': 'cell',
+                    'criteria': '==',
+                    'value': '"Absent"',        # The value to match (must be in quotes)
+                    'format': absent_format     # The format to apply
+                }
+            )
+
+        # Optional: Adjust column widths for better readability
+        worksheet.set_column('A:A', 12)  # Employee ID
+        worksheet.set_column('B:B', 25)  # Employee Name
+        worksheet.set_column('C:C', 12)  # Date
+        worksheet.set_column('D:D', 10)  # Status
+        worksheet.set_column('E:G', 12)  # Clock In, Clock Out, Shift
+
+        # --- End of New Formatting Code ---
+    output.seek(0)
+    
+    headers = {
+        "Content-Disposition": "attachment; filename=attendance_report.xlsx",
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    }
+    return StreamingResponse(output, headers=headers)
+
 
 @router.get("/reports/attendance")
 def get_attendance_report(
