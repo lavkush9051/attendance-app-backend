@@ -30,7 +30,8 @@ class LeaveService:
         # Format: 12199 (Approved) - "remarks"
         # timeline_entry = f"{emp_id} ({action}) - \"{remark}\""
         emp_name = self.employee_repo.get_by_id(emp_id).emp_name
-        timeline_entry = f"{emp_name} ({action}) - \"{remark}\""
+        emp_id_str = str(emp_id)
+        timeline_entry = f"({emp_id_str}) {emp_name} ({action}) - \"{remark}\""
         
         if leave_req.remarks:
             # Add to existing remarks with newline
@@ -123,7 +124,8 @@ class LeaveService:
             )
 
         except Exception as e:
-            raise Exception(f"Service error while creating leave request: {str(e)}")
+            # Re-raise the original exception to preserve the error message
+            raise
 
     def get_employee_leave_requests(self, emp_id: int) -> List[LeaveRequestResponse]:
         """Get all leave requests for an employee"""
@@ -150,7 +152,8 @@ class LeaveService:
             ]
 
         except Exception as e:
-            raise Exception(f"Service error while fetching employee leaves: {str(e)}")
+            # Re-raise to preserve original error message
+            raise
 
     def get_admin_leave_requests(self, admin_emp_id: int) -> List[LeaveRequestDetailResponse]:
         """Get leave requests for admin approval"""
@@ -200,7 +203,8 @@ class LeaveService:
             return results
 
         except Exception as e:
-            raise Exception(f"Service error while fetching admin leaves: {str(e)}")
+            # Re-raise to preserve original error message
+            raise
 
     def update_leave_status(self, request_id: int, status_update: LeaveStatusUpdate,
                           admin_emp_id: int) -> LeaveRequestDetailResponse:
@@ -276,7 +280,8 @@ class LeaveService:
             )
 
         except Exception as e:
-            raise Exception(f"Service error while updating leave status: {str(e)}")
+            # Re-raise to preserve original error message
+            raise
 
     def get_employee_leave_balance(self, emp_id: int) -> List[LeaveBalanceResponse]:
         """Get leave balance summary for an employee"""
@@ -370,7 +375,8 @@ class LeaveService:
             return self.leave_repo.delete_by_id(request_id)
 
         except Exception as e:
-            raise Exception(f"Service error while cancelling leave request: {str(e)}")
+            # Re-raise to preserve original error message
+            raise
 
     def _calculate_leave_days(self, from_date: date, to_date: date) -> float:
         """Calculate number of leave days (can be fractional for half days)"""

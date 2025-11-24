@@ -4,6 +4,8 @@ from sqlalchemy.sql import func
 from sqlalchemy.orm import declarative_base
 from sqlalchemy import Interval, Computed, text
 from sqlalchemy.orm import relationship
+from sqlalchemy import DECIMAL, TIMESTAMP, UniqueConstraint
+
 
 Base = declarative_base()
 
@@ -225,6 +227,39 @@ class LeaveAttachment(Base):
     la_uploaded_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     leave_request = relationship("LeaveRequest", backref="attachments")
+
+
+class GeofenceLocation(Base):
+    """Geofence location model for storing office/block locations"""
+    __tablename__ = "geofence_location"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    lat = Column(DECIMAL(9, 7), nullable=False)
+    lon = Column(DECIMAL(9, 7), nullable=False)
+    block = Column(String(100), nullable=False)
+    radius = Column(Integer, nullable=False)  # radius in meters
+    created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
+    
+    # Relationship to employee access
+    employee_access = relationship("EmployeeGeofenceAccess", back_populates="geofence_location")
+
+
+class EmployeeGeofenceAccess(Base):
+    """Employee geofence access mapping"""
+    __tablename__ = "employee_geofence_access"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    ega_emp_id = Column(Integer, ForeignKey("employee_tbl.emp_id", ondelete="CASCADE"), nullable=False)
+    ega_geofence_id = Column(Integer, ForeignKey("geofence_location.id", ondelete="CASCADE"), nullable=False)
+    ega_access_granted_at = Column(TIMESTAMP, server_default=func.current_timestamp())
+    
+    # Relationships
+    geofence_location = relationship("GeofenceLocation", back_populates="employee_access")
+    
+    # Unique constraint to avoid duplicates
+    __table_args__ = (
+        UniqueConstraint('ega_emp_id', 'ega_geofence_id', name='unique_emp_geofence'),
+    )
 
 
 import os

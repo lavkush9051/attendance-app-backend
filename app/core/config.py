@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     SAP_DEV_USERNAME: str = "ADMIN_JRD"
     SAP_DEV_PASSWORD: str = "Welcome@@jnpa25"
     SAP_DEV_CLIENT: str = "200"
-    SAP_DEV_SEND_VIA: str = "sap"  # 'sap' sends directly to SAP from backend
+    SAP_DEV_SEND_VIA: str = "node"  # 'sap' sends directly to SAP from backend
 
     # SAP Production Integration settings
     SAP_PROD_BASE_URL: str = "https://sapbiometric.jnpa.in"  # Base URL without endpoint
@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     SAP_PROD_USERNAME: str = "SAPSUPPORT5"
     SAP_PROD_PASSWORD: str = "Kesavi@@jnpa12"
     SAP_PROD_CLIENT: str = "400"
-    SAP_PROD_SEND_VIA: str = "sap"  # 'sap' sends directly to SAP from backend
+    SAP_PROD_SEND_VIA: str = "node"  # 'sap' sends directly to SAP from backend
 
     # Common
     SHIFT_SYNC_BUFFER: int = 0  # hours after shift end to sync
