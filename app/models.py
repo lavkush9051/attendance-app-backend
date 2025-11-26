@@ -133,18 +133,22 @@ class LeaveBalance(Base):
     lt_earned_leave     = Column(Integer, nullable=False, server_default="0")
     lt_half_pay_leave   = Column(Integer, nullable=False, server_default="0")
     lt_medical_leave    = Column(Integer, nullable=False, server_default="0")
-    lt_special_leave    = Column(Integer, nullable=False, server_default="0")
-    lt_child_care_leave = Column(Integer, nullable=False, server_default="0")
-    lt_parental_leave   = Column(Integer, nullable=False, server_default="0")
+    lt_optional_holiday = Column(Integer, nullable=False, server_default="2")  # new
+    lt_compensatory_off        = Column(Integer, nullable=False, server_default="0")
+    # lt_special_leave    = Column(Integer, nullable=False, server_default="0")
+    # lt_child_care_leave = Column(Integer, nullable=False, server_default="0")
+    # lt_parental_leave   = Column(Integer, nullable=False, server_default="0")
 
     __table_args__ = (
         CheckConstraint("lt_casual_leave >= 0"),
         CheckConstraint("lt_earned_leave >= 0"),
         CheckConstraint("lt_half_pay_leave >= 0"),
         CheckConstraint("lt_medical_leave >= 0"),
-        CheckConstraint("lt_special_leave >= 0"),
-        CheckConstraint("lt_child_care_leave >= 0"),
-        CheckConstraint("lt_parental_leave >= 0"),
+        CheckConstraint("lt_optional_holiday >= 0"),
+        CheckConstraint("lt_compensatory_off >= 0"),
+        # CheckConstraint("lt_special_leave >= 0"),
+        # CheckConstraint("lt_child_care_leave >= 0"),
+        # CheckConstraint("lt_parental_leave >= 0"),
     )
 
 

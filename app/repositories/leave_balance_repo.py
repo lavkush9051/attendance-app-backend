@@ -6,14 +6,24 @@ from sqlalchemy import func, and_, extract, text
 from app.models import LeaveBalance, LeaveRequest, LeaveLedger
 
 # Map leave type names to LeaveBalance column names
+# LEAVE_COL_MAP = {
+#     "Casual Leave": "lt_casual_leave",
+#     "Earned Leave": "lt_earned_leave", 
+#     "Half Pay Leave": "lt_half_pay_leave",
+#     "Medical Leave": "lt_medical_leave",
+#     "Compensatory Off": "lt_compensatory_off",
+#     "Optional Holiday": "lt_optional_holiday",
+#     # "Special Leave": "lt_special_leave",
+#     # "Child Care Leave": "lt_child_care_leave",
+#     # "Parental Leave": "lt_parental_leave",
+# }
 LEAVE_COL_MAP = {
-    "Casual Leave": "lt_casual_leave",
-    "Earned Leave": "lt_earned_leave", 
-    "Half Pay Leave": "lt_half_pay_leave",
-    "Medical Leave": "lt_medical_leave",
-    "Special Leave": "lt_special_leave",
-    "Child Care Leave": "lt_child_care_leave",
-    "Parental Leave": "lt_parental_leave",
+    "casual leave": "lt_casual_leave",
+    "earned leave": "lt_earned_leave",
+    "half pay leave": "lt_half_pay_leave",
+    "medical leave": "lt_medical_leave",
+    "optional holiday": "lt_optional_holiday",
+    "compensatory off": "lt_compensatory_off",
 }
 
 class LeaveBalanceRepository:
@@ -35,12 +45,15 @@ class LeaveBalanceRepository:
             balance_record = self.get_by_employee_id(emp_id)
             if not balance_record:
                 return None
-            
-            column_name = LEAVE_COL_MAP.get(leave_type)
+            key = (leave_type or "").strip().lower() # changes to lower case for matching
+            column_name = LEAVE_COL_MAP.get(key) # passes key to get correct column name
             if not column_name:
-                raise Exception(f"Unknown leave type: {leave_type}")
+                raise Exception(f"Unknown leave type: {leave_type} (normalized='{key}')")
             
-            return getattr(balance_record, column_name, 0)
+           # Safe getattr: if attribute missing, return 0
+            val = getattr(balance_record, column_name, 0)
+            # ensure numeric
+            return float(val or 0)
         except SQLAlchemyError as e:
             raise Exception(f"Database error while fetching leave balance: {str(e)}")
 
@@ -51,15 +64,16 @@ class LeaveBalanceRepository:
             allocated = self.get_by_employee_and_type(emp_id, leave_type)
             if allocated is None:
                 return 0.0
-
+            # Normalize leave type
+            normalized = (leave_type or "").strip()
             # Calculate used days from LeaveLedger with COMMIT status
             used_days = self.db.query(func.coalesce(func.sum(LeaveLedger.ll_qty), 0)).filter(
-                LeaveLedger.ll_emp_id == emp_id,
-                LeaveLedger.ll_leave_type == leave_type,
-                LeaveLedger.ll_action == "COMMIT"
-            ).scalar()
+            LeaveLedger.ll_emp_id == emp_id,
+            LeaveLedger.ll_leave_type == normalized,
+            LeaveLedger.ll_action == "COMMIT"
+        ).scalar() or 0
 
-            return float(allocated) - float(used_days or 0)
+            return float(allocated) - float(used_days)
 
         except SQLAlchemyError as e:
             raise Exception(f"Database error while calculating available balance: {str(e)}")

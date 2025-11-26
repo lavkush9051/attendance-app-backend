@@ -48,11 +48,17 @@ class LeaveService:
             if not employee:
                 raise Exception(f"Employee with ID {requesting_emp_id} not found")
 
+            # # Validate date range
+            # if request.from_date > request.to_date:
+            #     raise Exception("From date cannot be after to date")
             # Validate date range
             if request.from_date > request.to_date:
                 raise Exception("From date cannot be after to date")
-
-            if request.from_date < date.today() and request.leave_type.lower() != 'medical leave':
+            # Allow past dates for Medical Leave, Half Pay Leave, and Commuted Leave
+            allowed_past_types = ["medical leave", "half pay leave", "commuted leave"]
+            # if request.from_date < date.today() and request.leave_type.lower() != 'medical leave':
+            #     raise Exception("Cannot apply for past dates")
+            if request.from_date < date.today() and request.leave_type.lower() not in allowed_past_types:
                 raise Exception("Cannot apply for past dates")
 
             # Calculate total days using business days (exclude weekends)
@@ -69,7 +75,10 @@ class LeaveService:
             if request.leave_type.lower() != 'sick':
                 balance_snapshot = self.get_balance_snapshot(requesting_emp_id, request.leave_type)
                 available_balance = balance_snapshot["available"]
-                
+
+                # DEBUG: log values so you see what is being used
+                print(f"[DEBUG] req.emp={requesting_emp_id} type='{request.leave_type}' total_days={total_days} balance_snapshot={balance_snapshot}")
+
                 if total_days > available_balance:
                     raise Exception(
                         f"Insufficient {request.leave_type} balance. "
@@ -435,15 +444,17 @@ class LeaveService:
     def get_balance_snapshot(self, emp_id: int, leave_type: str) -> dict:
         """Get current balance snapshot for leave type with ledger calculations"""
         try:
-            # Get accrued balance from LeaveBalance table via repository
+            # Normalize leave type    
+            normalized_key = (leave_type or "").strip().lower()
+            # Get accrued balance (this method now supports normalized keys)
             accrued = self.leave_balance_repo.get_by_employee_and_type(emp_id, leave_type)
             if accrued is None:
                 accrued = 0.0
             
             # Get ledger totals via repository
             ledger_totals = self.leave_ledger_repo.get_balance_totals(emp_id, leave_type)
-            held = ledger_totals["held"]
-            committed = ledger_totals["committed"]
+            held = ledger_totals.get("held", 0)
+            committed = ledger_totals.get("committed", 0)
             
             # Available = accrued - committed - held
             available = float(accrued) - committed - held
@@ -890,3 +901,11 @@ class LeaveService:
         except Exception as e:
             self.db.rollback()
             raise Exception(f"Error in L2 cancellation: {str(e)}")
+
+# ===============================
+# canonical_leave_name
+# ===============================
+    def canonical_leave_name(name: str) -> str:
+    # return consistent string used in ledger and in mapping keys
+    # example: keep original capitalization but trim whitespace
+      return (name or "").strip()

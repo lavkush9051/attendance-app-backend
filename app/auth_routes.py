@@ -61,6 +61,9 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
         if not employee:
             print(f"[ERROR] /login employee not found for user: {user.username}")
             raise HTTPException(status_code=404, detail="Employee not found")
+        # Fetch L1 and L2 names
+        l1_manager = db.query(Employee).filter(Employee.emp_id == employee.emp_l1).first() if employee.emp_l1 else None
+        l2_manager = db.query(Employee).filter(Employee.emp_id == employee.emp_l2).first() if employee.emp_l2 else None
 
         # Return token AND essential employee info in frontend expected format
         login_response = {
@@ -74,7 +77,9 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
                 "emp_department": employee.emp_department,
                 "emp_designation": employee.emp_designation,
                 "emp_l1": employee.emp_l1,
+                "emp_l1_name": l1_manager.emp_name if l1_manager else "", # added this
                 "emp_l2": employee.emp_l2,
+                "emp_l2_name": l2_manager.emp_name if l2_manager else "",  # added this
                 "emp_gender": employee.emp_gender,
                 "emp_address": employee.emp_address,
                 "emp_joining_date": str(employee.emp_joining_date) if employee.emp_joining_date else "",
