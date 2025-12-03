@@ -188,7 +188,9 @@ def get_leave_requests(
                     "l1_status": request.l1_status.lower(),
                     "l2_status": request.l2_status.lower(),
                     "attachment": None,
-                    "remarks": getattr(request, 'remarks', '') or ""
+                    "remarks": getattr(request, 'remarks', '') or "",
+                    "l1_id": getattr(request, 'leave_req_l1_id', None),
+                    "l2_id": getattr(request, 'leave_req_l2_id', None),
                 }
                 formatted_requests.append(request_dict)
             
@@ -273,12 +275,13 @@ async def create_leave_request(
     leave_to_dt: str = Form(...),
     leave_reason: str = Form(...),
     leave_applied_dt: str = Form(...),
+    immediate_reporting_officer: str = Form(...),
     files: List[UploadFile] = File(default=[]),
     current_emp_id: int = Depends(get_current_user_emp_id),
-    leave_service: LeaveService = Depends(get_leave_service)
+    leave_service: LeaveService = Depends(get_leave_service)    
 ):
     """Create a new leave request"""
-    print(f"[LOG] /leave-request called by user {current_emp_id} for emp_id={emp_id}, leave_type={leave_type}, from={leave_from_dt}, to={leave_to_dt}")
+    print(f"[LOG] /leave-request called by user {current_emp_id} for emp_id={emp_id}, leave_type={leave_type}, from={leave_from_dt}, to={leave_to_dt},immediate_reporting_officer={immediate_reporting_officer}")
     
     session: Session = SessionLocal()
     try:
@@ -293,7 +296,8 @@ async def create_leave_request(
             from_date=from_date,
             to_date=to_date,
             leave_type=leave_type,
-            reason=leave_reason
+            reason=leave_reason,
+            immediate_reporting_officer=immediate_reporting_officer
         )
         
         # Create leave request through service
@@ -347,11 +351,16 @@ def leave_action(
     admin_id: int = Body(...),
     comments: Optional[str] = Body(None),
     remarks: Optional[str] = Body(None),
+    next_reporting_officer: Optional[str] = Body(None),
     current_emp_id: int = Depends(get_current_user_emp_id),
     leave_service: LeaveService = Depends(get_leave_service)
 ):
     """Handle leave request approval/rejection/cancellation with ledger operations"""
-    print(f"[LOG] /leave-request/action called by user {current_emp_id} for request {leave_req_id}, action={action}")
+    print("[LOG] /leave-request/action called by user {current_emp_id} for request {leave_req_id}, action={action}")
+    if(next_reporting_officer == "" or next_reporting_officer == None):
+        next_reporting_officer = None
+    else:
+        next_reporting_officer = int(next_reporting_officer)
     try:
         # Get the leave request to determine L1/L2 roles
         from sqlalchemy.orm import Session
@@ -369,7 +378,7 @@ def leave_action(
         if action.lower() == "approve":
             # Check if user is L1 manager
             if leave_req.leave_req_l1_id == current_emp_id:
-                result = leave_service.l1_approve_leave_request(leave_req_id, current_emp_id, final_remarks)
+                result = leave_service.l1_approve_leave_request(leave_req_id, current_emp_id, final_remarks, next_reporting_officer)
             # Check if user is L2 manager
             elif leave_req.leave_req_l2_id == current_emp_id:
                 result = leave_service.l2_approve_leave_request(leave_req_id, current_emp_id, final_remarks)

@@ -55,7 +55,7 @@ class LeaveService:
             if request.from_date > request.to_date:
                 raise Exception("From date cannot be after to date")
             # Allow past dates for Medical Leave, Half Pay Leave, and Commuted Leave
-            allowed_past_types = ["medical leave", "half pay leave", "commuted leave"]
+            allowed_past_types = ["medical leave", "half pay leave", "commuted leave", "casual leave", "earned leave"]
             # if request.from_date < date.today() and request.leave_type.lower() != 'medical leave':
             #     raise Exception("Cannot apply for past dates")
             if request.from_date < date.today() and request.leave_type.lower() not in allowed_past_types:
@@ -89,7 +89,8 @@ class LeaveService:
 
             # Get reporting hierarchy for approvals
             hierarchy = self.employee_repo.get_reporting_hierarchy(requesting_emp_id)
-            l1_id = hierarchy.get('l1_id')
+            # l1_id = hierarchy.get('l1_id')
+            l1_id = request.immediate_reporting_officer # chnages here to get l1 id from form input
             l2_id = hierarchy.get('l2_id')
 
             if not l1_id:
@@ -104,8 +105,10 @@ class LeaveService:
                 reason=request.reason,
                 l1_id=l1_id,
                 l2_id=l2_id or l1_id,
-                total_days=total_days
+                total_days=total_days,
+                immediate_reporting_officer=request.immediate_reporting_officer # ✅ NEW FIELD PASSED
             )
+            print(f"[DEBUG] Leave request created: {leave_req}")
 
             # Create HOLD entry in ledger to reserve the leave balance
             self.ledger_hold(requesting_emp_id, request.leave_type, total_days, leave_req.leave_req_id)
@@ -204,7 +207,10 @@ class LeaveService:
                     created_at=req.leave_req_id,
                     remarks=req.remarks or "",
                     applied_date=req.leave_req_applied_dt if hasattr(req, 'leave_req_applied_dt') and req.leave_req_applied_dt else None,
+                    leave_req_l1_id=req.leave_req_l1_id,
+                    leave_req_l2_id=req.leave_req_l2_id,
                 ))
+                #print(f"[DEBUG] Admin request: {req.leave_req_l2_id}, {req.leave_req_l1_id}, can_approve={can_approve}, action_level={action_level}")
 
             return results
 
@@ -574,10 +580,11 @@ class LeaveService:
     # L1/L2 APPROVAL WORKFLOW  
     # ===============================
     
-    def l1_approve_leave_request(self, req_id: int, approver_id: int, remarks: str = None) -> dict:
+    def l1_approve_leave_request(self, req_id: int, approver_id: int, remarks: str = None, next_reporting_officer: str= None) -> dict:
         """L1 manager approves leave request"""
         try:
             # Get leave request via repository
+            print(f"[L1 APPROVAL] req_id={req_id}, approver_id={approver_id}, remarks='{remarks}', next_reporting_officer='{next_reporting_officer}'")
             leave_req = self.leave_repo.get_by_id(req_id)
             if not leave_req:
                 raise Exception(f"Leave request {req_id} not found")
@@ -591,9 +598,9 @@ class LeaveService:
                 raise Exception(f"Leave request already processed by L1. Current status: {leave_req.leave_req_l1_status}")
             
             # Check if L2 approval is needed
-            if leave_req.leave_req_l2_id and leave_req.leave_req_l2_id != leave_req.leave_req_l1_id:
+            if leave_req.leave_req_l2_id==None and leave_req.leave_req_l2_id != leave_req.leave_req_l1_id:
                 # L2 approval needed - update L1 status and overall status to "L1 Approved"
-                self.leave_repo.update_status(req_id, "L1 Approved", "Approved", None)
+                self.leave_repo.update_status(req_id, "L1 Approved", "Approved", None, next_reporting_officer)
                 # Add L1 remarks in timeline format
                 self.append_timeline_remark(leave_req, approver_id, "Approved", remarks)
                 self.db.commit()
@@ -760,8 +767,8 @@ class LeaveService:
             
             # Check if leave start date is greater than today
             from datetime import date
-            if leave_req.leave_req_from_dt <= date.today():
-                raise Exception("Cannot cancel leave request as leave start date must be greater than today")
+            # if leave_req.leave_req_from_dt <= date.today():
+            #     raise Exception("Cannot cancel leave request as leave start date must be greater than today")
             
             # Update status
             leave_req.leave_req_status = "Cancelled"

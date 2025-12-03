@@ -48,6 +48,45 @@ class EmployeeRepository:
         except SQLAlchemyError as e:
             raise Exception(f"Database error while fetching employee {emp_id}: {str(e)}")
 
+    # Api for getting designation wise data by id // sandeep
+    def get_emps_by_designations(self) -> list[Employee]:
+        """Fetch all employees whose designation matches the predefined designation list"""
+        try:
+            designations = [
+                "CHAIRMAN","DY. CHAIRMAN","CHIEF GENERAL MANAGER","GENERAL MANAGER","GENERAL MANAGER (A) & SECY",
+                "DY GENERAL MANAGER","CHIEF VIGILANCE OFFICER",
+                "SENIOR MANAGER","MANAGER","DEPUTY MANAGER","ASSISTANT MANAGER",
+                "SR. MANAGER P & IR","SENIOR MANAGER (TRAFFIC)","DEPUTY CONSERVATOR","LABOR WELFARE OFFICER","SAFETY INSPECTOR",
+                "HARBOUR MASTER","DOCK MASTER","PILOT",
+                "DY. CHIEF MEDICAL OFFICER (SP)","SR. MEDICAL OFFICER (SP)","SENIOR MEDICAL OFFICER (GENERAL DUTY)","MEDICAL OFFICER",
+                "PS TO CHAIRMAN","PERSONAL ASST TO HOD","PA TO HOD"                
+            ]
+            # return (
+            #     self.db.query(Employee) .filter(Employee.emp_designation.in_(designations)).all()
+            # )
+            # Execute query
+            employees = (
+                    self.db.query(Employee)
+                    .filter(Employee.emp_designation.in_(designations))
+                    .all()
+                )
+
+            # Debug print (single print only)
+            print("Fetched employees:", [
+                    {
+                        "emp_id": emp.emp_id,
+                        "emp_name": emp.emp_name,
+                        "emp_designation": emp.emp_designation
+                    }
+                    for emp in employees
+                ])
+
+            return employees
+
+        except SQLAlchemyError as e:
+            raise Exception(f"Database error while fetching designation-wise employees: {str(e)}")
+    
+
     def get_by_ids(self, emp_ids: List[int]) -> List[Employee]:
         """Get employees by IDs"""
         try:
