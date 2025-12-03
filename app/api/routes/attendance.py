@@ -211,11 +211,13 @@ def create_attendance_request(
     clock_out: str = Form(...),     # 'HH:MM'
     reason: str = Form(...),
     shift: str = Form(...),
+    immediate_reporting_officer: int = Form(None),
     current_user_emp_id: int = Depends(get_current_user_emp_id),
     attendance_service: AttendanceService = Depends(get_attendance_service)
+
 ):
     """Create an attendance regularization request"""
-    print(f"[LOG] /attendance-regularization called with emp_id={emp_id}, date={date}, clock_in={clock_in}, clock_out={clock_out}, current_user={current_user_emp_id}")
+    print(f"[LOG] /attendance-regularization called with emp_id={emp_id}, date={date}, clock_in={clock_in}, clock_out={clock_out}, current_user={current_user_emp_id},immediate_reporting_officer={immediate_reporting_officer}")
     try:
         # Authorization check: users can only create requests for themselves
         if emp_id != current_user_emp_id:
@@ -241,7 +243,7 @@ def create_attendance_request(
         
         # Use service to create the request
         response = attendance_service.create_regularization_request(
-            regularization_request, emp_id
+            regularization_request, emp_id,immediate_reporting_officer
         )
         
         # Service returns AttendanceRequestResponse directly
