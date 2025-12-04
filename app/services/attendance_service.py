@@ -43,7 +43,7 @@ class AttendanceService:
             return False
 
     def create_regularization_request(self, request: AttendanceRegularizationCreate, 
-                                    requesting_emp_id: int,immediate_reporting_officer:int) -> AttendanceRequestResponse:
+                                    requesting_emp_id: int) -> AttendanceRequestResponse:
         """Create a new attendance regularization request"""
         try:
             # Validate employee exists
@@ -53,8 +53,7 @@ class AttendanceService:
 
             # Get reporting hierarchy for approvals - L1 only workflow
             hierarchy = self.employee_repo.get_reporting_hierarchy(requesting_emp_id)
-            # l1_id = hierarchy.get('l1_id')
-            l1_id = immediate_reporting_officer
+            l1_id = hierarchy.get('l1_id')  
             # L2 workflow commented for future use
             # l2_id = hierarchy.get('l2_id')
 
