@@ -18,12 +18,13 @@ from app.models import LeaveBalance, LeaveRequest, LeaveLedger
 #     # "Parental Leave": "lt_parental_leave",
 # }
 LEAVE_COL_MAP = {
-    "casual leave": "lt_casual_leave",
-    "earned leave": "lt_earned_leave",
-    "half pay leave": "lt_half_pay_leave",
-    "medical leave": "lt_medical_leave",
-    "optional holiday": "lt_optional_holiday",
-    "compensatory off": "lt_compensatory_off",
+    "Casual Leave": "lt_casual_leave",
+    "Earned Leave": "lt_earned_leave",
+    "Half Pay Leave": "lt_half_pay_leave",
+    "Medical Leave": "lt_medical_leave",
+    "Optional Holiday": "lt_optional_holiday",
+    "Compensatory off": "lt_compensatory_off",
+    "Commuted Leave": "lt_commuted_leave",
 }
 
 class LeaveBalanceRepository:
@@ -45,7 +46,7 @@ class LeaveBalanceRepository:
             balance_record = self.get_by_employee_id(emp_id)
             if not balance_record:
                 return None
-            key = (leave_type or "").strip().lower() # changes to lower case for matching
+            key = (leave_type or "").strip() # changes to lower case for matching
             column_name = LEAVE_COL_MAP.get(key) # passes key to get correct column name
             if not column_name:
                 raise Exception(f"Unknown leave type: {leave_type} (normalized='{key}')")

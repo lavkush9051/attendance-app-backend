@@ -60,6 +60,20 @@ class LeaveLedgerRepository:
             if existing:
                 return None  # Already committed (idempotent)
             
+            existing_hold = self.db.query(LeaveLedger).filter(
+                LeaveLedger.ll_ref_leave_req_id == ref_leave_req_id,
+                LeaveLedger.ll_action == "HOLD"
+            ).first()
+
+            if existing_hold:
+                LeaveLedger.ll_action = "COMMIT"
+
+                self.db.add(existing_hold)
+                self.db.flush()
+
+                return existing_hold
+            
+            
             commit_entry = LeaveLedger(
                 ll_emp_id=emp_id,
                 ll_leave_type=leave_type,
@@ -108,7 +122,7 @@ class LeaveLedgerRepository:
                 LeaveLedger.ll_leave_type == leave_type,
                 LeaveLedger.ll_action == "COMMIT"
             ).scalar()
-            
+            print(f"[DEBUG] Leave_type:{leave_type}, Committed total from DB: {committed_total},released_total: {released_total}, held_total: {held_total}")
             committed = float(committed_total or 0.0)
             
             return {

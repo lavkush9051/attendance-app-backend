@@ -38,6 +38,7 @@ LEAVE_COL_MAP = {
     "Special Leave": "lt_special_leave",
     "Child Care Leave": "lt_child_care_leave",
     "Parental Leave": "lt_parental_leave",
+    "Commuted Leave": "lt_commuted_leave",
 }
 
 @router.get("/leave-types")
@@ -203,50 +204,155 @@ def get_leave_requests(
         print(f"[ERROR] /leave-requests/{emp_id} exception: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# @router.get("/leave-balance/snapshot")
+# def get_leave_balance_snapshot(
+#     emp_id: str = Query(...),
+#     current_emp_id: int = Depends(get_current_user_emp_id),
+#     leave_service: LeaveService = Depends(get_leave_service)
+# ):
+#     """Get leave balance snapshot for employee"""
+#     print(f"[LOG] /leave-balance/snapshot called for emp_id={emp_id} by user {current_emp_id}")
+#     try:
+#         emp_id_int = int(emp_id)
+        
+#         # Get actual leave balance data from service
+#         balance_result = leave_service.get_employee_balance_snapshot(emp_id_int, current_emp_id)
+#         print(f"[DEBUG] Leave balance snapshot from service: {balance_result}")
+        
+#         # Transform the service response to match frontend expectations
+#         types_list = []
+#         total_accrued = 0
+#         total_held = 0
+#         total_committed = 0
+#         total_available = 0
+        
+#         if 'balances' in balance_result:
+#             for leave_type, balance_info in balance_result['balances'].items():
+#                 # Extract values with defaults  
+#                 accrued = balance_info.get('accrued', 0)
+#                 held = balance_info.get('held', 0)
+#                 committed = balance_info.get('committed', 0)
+#                 available = balance_info.get('available', 0)
+                
+#                 types_list.append({
+#                     "type": leave_type,
+#                     "accrued": accrued,
+#                     "held": held,
+#                     "committed": committed,
+#                     "available": available
+#                 })
+                
+#                 # Calculate totals
+#                 total_accrued += accrued
+#                 total_held += held
+#                 total_committed += committed
+#                 total_available += available
+        
+#         # Format response as expected by frontend
+#         balance_data = {
+#             "emp_id": str(emp_id_int),
+#             "types": types_list,
+#             "totals": {
+#                 "accrued": total_accrued,
+#                 "held": total_held,
+#                 "committed": total_committed,
+#                 "available": total_available
+#             }
+#         }
+        
+#         print(f"[LOG] /leave-balance/snapshot returning balance for emp {emp_id}: {balance_data}")
+#         return JSONResponse(content=balance_data)
+#     except ValueError:
+#         print(f"[ERROR] /leave-balance/snapshot invalid employee ID format: {emp_id}")
+#         raise HTTPException(status_code=400, detail="Invalid employee ID format")
+#     except Exception as e:
+#         print(f"[ERROR] /leave-balance/snapshot exception: {str(e)}")
+#         raise HTTPException(status_code=500, detail=str(e))
+
+
+from fastapi import Query, Depends, HTTPException
+from fastapi.responses import JSONResponse
+from copy import deepcopy
+### new function for leave balance snapshot with business rules
 @router.get("/leave-balance/snapshot")
 def get_leave_balance_snapshot(
     emp_id: str = Query(...),
     current_emp_id: int = Depends(get_current_user_emp_id),
     leave_service: LeaveService = Depends(get_leave_service)
 ):
-    """Get leave balance snapshot for employee"""
     print(f"[LOG] /leave-balance/snapshot called for emp_id={emp_id} by user {current_emp_id}")
+
     try:
         emp_id_int = int(emp_id)
-        
-        # Get actual leave balance data from service
+
+        # STEP 1 — Fetch original service data
         balance_result = leave_service.get_employee_balance_snapshot(emp_id_int, current_emp_id)
-        
-        # Transform the service response to match frontend expectations
+        print(f"[DEBUG] Raw balance snapshot from service: {balance_result}")
+
+        if not balance_result or "balances" not in balance_result:
+            raise HTTPException(status_code=404, detail="No leave balance data found.")
+
+        # STEP 2 — Deep copy so we can modify safely
+        balance_result_modified = deepcopy(balance_result)
+        balances = balance_result_modified.get("balances", {})
+
+        # STEP 3 — Function to find keys independent of case/spacing
+        def find_key(dictionary, target_name):
+            target = target_name.lower().strip()
+            for key in dictionary.keys():
+                if key.lower().strip() == target:
+                    return key
+            return None
+
+        # Locate keys safely
+        half_pay_key = find_key(balances, "Half Pay Leave")
+        commuted_key = find_key(balances, "Commuted Leave")
+
+        # STEP 4 — Apply business rule (deduct Commuted Leave committed & held)
+        if half_pay_key and commuted_key:
+            half_pay = balances[half_pay_key]
+            commuted = balances[commuted_key]
+
+            hp_available = half_pay.get("available", 0)
+            com_committed = commuted.get("committed", 0)
+            com_held = commuted.get("held", 0)
+
+            updated_hp_available = hp_available - com_committed*2 - com_held*2
+            updated_hp_available = max(updated_hp_available, 0)  # avoid negative
+
+            balances[half_pay_key]["available"] = updated_hp_available
+
+            print(f"[DEBUG] Updated Half Pay Leave available: {updated_hp_available}")
+        else:
+            print(f"[WARN] Key not found: Half Pay Leave or Commuted Leave. No deduction applied.")
+
+        # STEP 5 — Build frontend response format
         types_list = []
         total_accrued = 0
         total_held = 0
         total_committed = 0
         total_available = 0
-        
-        if 'balances' in balance_result:
-            for leave_type, balance_info in balance_result['balances'].items():
-                # Extract values with defaults  
-                accrued = balance_info.get('accrued', 0)
-                held = balance_info.get('held', 0)
-                committed = balance_info.get('committed', 0)
-                available = balance_info.get('available', 0)
-                
-                types_list.append({
-                    "type": leave_type,
-                    "accrued": accrued,
-                    "held": held,
-                    "committed": committed,
-                    "available": available
-                })
-                
-                # Calculate totals
-                total_accrued += accrued
-                total_held += held
-                total_committed += committed
-                total_available += available
-        
-        # Format response as expected by frontend
+
+        for leave_type, info in balances.items():
+            accrued = info.get("accrued", 0)
+            held = info.get("held", 0)
+            committed = info.get("committed", 0)
+            available = info.get("available", 0)
+
+            types_list.append({
+                "type": leave_type,
+                "accrued": accrued,
+                "held": held,
+                "committed": committed,
+                "available": available
+            })
+
+            total_accrued += accrued
+            total_held += held
+            total_committed += committed
+            total_available += available
+
+        # STEP 6 — Final response object
         balance_data = {
             "emp_id": str(emp_id_int),
             "types": types_list,
@@ -257,15 +363,16 @@ def get_leave_balance_snapshot(
                 "available": total_available
             }
         }
-        
-        print(f"[LOG] /leave-balance/snapshot returning balance for emp {emp_id}: {balance_data}")
+
+        print(f"[LOG] /leave-balance/snapshot returning: {balance_data}")
         return JSONResponse(content=balance_data)
+
     except ValueError:
-        print(f"[ERROR] /leave-balance/snapshot invalid employee ID format: {emp_id}")
         raise HTTPException(status_code=400, detail="Invalid employee ID format")
     except Exception as e:
         print(f"[ERROR] /leave-balance/snapshot exception: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/leave-request")
 async def create_leave_request(
@@ -435,31 +542,31 @@ def delete_leave_request(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/leave-balance/snapshot")
-def get_leave_balance_snapshot(
-    emp_id: int = Query(...),
-    current_emp_id: int = Depends(get_current_user_emp_id),
-    leave_service: LeaveService = Depends(get_leave_service)
-):
-    """
-    Returns per-type balances using the HOLD/RELEASE/COMMIT ledger:
-      accrued   -> from leave_tbl
-      held      -> sum(HOLD) - sum(RELEASE)
-      committed -> sum(COMMIT)
-      available -> accrued - committed - max(0, held)
-    """
-    try:
-        # Authorization check: users can only view their own leave balance
-        if emp_id != current_emp_id:
-            raise HTTPException(
-                status_code=403,
-                detail="Access denied - can only view your own leave balance"
-            )
+# @router.get("/leave-balance/snapshot")
+# def get_leave_balance_snapshot(
+#     emp_id: int = Query(...),
+#     current_emp_id: int = Depends(get_current_user_emp_id),
+#     leave_service: LeaveService = Depends(get_leave_service)
+# ):
+#     """
+#     Returns per-type balances using the HOLD/RELEASE/COMMIT ledger:
+#       accrued   -> from leave_tbl
+#       held      -> sum(HOLD) - sum(RELEASE)
+#       committed -> sum(COMMIT)
+#       available -> accrued - committed - max(0, held)
+#     """
+#     try:
+#         # Authorization check: users can only view their own leave balance
+#         if emp_id != current_emp_id:
+#             raise HTTPException(
+#                 status_code=403,
+#                 detail="Access denied - can only view your own leave balance"
+#             )
         
-        balance_snapshot = leave_service.get_leave_balance_snapshot(emp_id)
-        return balance_snapshot
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+#         balance_snapshot = leave_service.get_leave_balance_snapshot(emp_id)
+#         return balance_snapshot
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/leave-balance")
 def get_leave_balance(

@@ -72,14 +72,14 @@ class LeaveService:
                 raise Exception(f"Leave request overlaps with existing leave from {overlapping[0].leave_req_from_dt} to {overlapping[0].leave_req_to_dt}")
 
             # Enhanced balance validation using ledger calculations
-            if request.leave_type.lower() != 'sick':
+            if request.leave_type != 'sick': # Sick leave has no balance restrictions
                 balance_snapshot = self.get_balance_snapshot(requesting_emp_id, request.leave_type)
                 available_balance = balance_snapshot["available"]
 
                 # DEBUG: log values so you see what is being used
                 print(f"[DEBUG] req.emp={requesting_emp_id} type='{request.leave_type}' total_days={total_days} balance_snapshot={balance_snapshot}")
 
-                if total_days > available_balance:
+                if total_days > available_balance and request.leave_type.lower() not in ['commuted leave'] :
                     raise Exception(
                         f"Insufficient {request.leave_type} balance. "
                         f"Requested: {total_days} days, Available: {available_balance} days "
@@ -451,19 +451,24 @@ class LeaveService:
         """Get current balance snapshot for leave type with ledger calculations"""
         try:
             # Normalize leave type    
-            normalized_key = (leave_type or "").strip().lower()
+            #normalized_key = (leave_type or "").strip().lower()
             # Get accrued balance (this method now supports normalized keys)
             accrued = self.leave_balance_repo.get_by_employee_and_type(emp_id, leave_type)
+            #print(f"[DEBUG] get_balance_snapshot: emp={emp_id}, type='{leave_type}', normalized_key='{normalized_key}', accrued={accrued}")
             if accrued is None:
                 accrued = 0.0
             
             # Get ledger totals via repository
             ledger_totals = self.leave_ledger_repo.get_balance_totals(emp_id, leave_type)
+            print(f"[DEBUG] Ledger totals for emp={emp_id}, type='{leave_type}': {ledger_totals}")
             held = ledger_totals.get("held", 0)
+            print(f"[DEBUG] Held leaves: {held}")
             committed = ledger_totals.get("committed", 0)
+            print(f"[DEBUG] Committed leaves: {committed}")
             
             # Available = accrued - committed - held
             available = float(accrued) - committed - held
+            print(f"[DEBUG] Calculated available leaves: {available}")
             
             return {
                 "accrued": round(float(accrued), 2),
@@ -471,6 +476,7 @@ class LeaveService:
                 "committed": round(committed, 2),
                 "available": round(max(0.0, available), 2)
             }
+        
             
         except Exception as e:
             raise Exception(f"Error getting balance snapshot: {str(e)}")
@@ -611,12 +617,12 @@ class LeaveService:
                 
                 # COMMIT the leave in ledger (final approval)
                 total_days = float((leave_req.leave_req_to_dt - leave_req.leave_req_from_dt).days + 1)
-                self.ledger_commit(
-                    leave_req.leave_req_emp_id, 
-                    leave_req.leave_req_type, 
-                    total_days, 
-                    req_id
-                )
+                # self.ledger_commit(
+                #     leave_req.leave_req_emp_id, 
+                #     leave_req.leave_req_type, 
+                #     total_days, 
+                #     req_id
+                # )
                 
                 # Add L1 remarks in timeline format
                 self.append_timeline_remark(leave_req, approver_id, "Approved", remarks)
