@@ -72,10 +72,11 @@ def get_leave_service(
     leave_balance_repo: LeaveBalanceRepository = Depends(get_leave_balance_repository),
     employee_repo: EmployeeRepository = Depends(get_employee_repository),
     leave_ledger_repo: LeaveLedgerRepository = Depends(get_leave_ledger_repository),
+    clock_repo: ClockRepository = Depends(get_clock_repository),
     db: Session = Depends(get_db)
 ) -> LeaveService:
     """Get leave service instance"""
-    return LeaveService(leave_repo, leave_balance_repo, employee_repo, leave_ledger_repo, db)
+    return LeaveService(leave_repo, leave_balance_repo, employee_repo, leave_ledger_repo, clock_repo, db)
 
 def get_face_service(
     face_repo: FaceRepository = Depends(get_face_repository)
