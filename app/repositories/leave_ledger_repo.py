@@ -29,11 +29,47 @@ class LeaveLedgerRepository:
         """Create a RELEASE entry in the leave ledger (with idempotency check)"""
         try:
             # Check outstanding hold amount for this request
-            outstanding = self.get_total_by_action_and_request(ref_leave_req_id, "HOLD")
-            already_released = self.get_total_by_action_and_request(ref_leave_req_id, "RELEASE")
+            # outstanding = self.get_total_by_action_and_request(ref_leave_req_id, "HOLD")
+            # already_released = self.get_total_by_action_and_request(ref_leave_req_id, "RELEASE")
             
-            if outstanding <= already_released:
-                return None  # Nothing to release (idempotent)
+            # if outstanding <= already_released:
+            #     return None  # Nothing to release (idempotent)
+            
+            # Idempotency: if already released for this request, skip
+            existing = self.db.query(LeaveLedger).filter(
+                LeaveLedger.ll_ref_leave_req_id == ref_leave_req_id,
+                LeaveLedger.ll_action == "RELEASE"
+            ).first()
+            
+            if existing:
+                return None  # Already released (idempotent)
+            
+            # COMMIT to RELEASE
+            existing_commit = self.db.query(LeaveLedger).filter(
+                LeaveLedger.ll_ref_leave_req_id == ref_leave_req_id,
+                LeaveLedger.ll_action == "COMMIT"
+            ).first()
+
+            if existing_commit:
+                existing_commit.ll_action = "RELEASE"
+
+                self.db.add(existing_commit)
+                self.db.flush()
+
+                return existing_commit
+            
+            # HOLD to RELEASE (if cancel by user before commit)
+            existing_hold = self.db.query(LeaveLedger).filter(
+                LeaveLedger.ll_ref_leave_req_id == ref_leave_req_id,
+                LeaveLedger.ll_action == "HOLD"
+            ).first()
+            if existing_hold:
+                existing_hold.ll_action = "RELEASE"
+
+                self.db.add(existing_hold)
+                self.db.flush()
+
+                return existing_hold
             
             release_entry = LeaveLedger(
                 ll_emp_id=emp_id,
@@ -59,6 +95,20 @@ class LeaveLedgerRepository:
             
             if existing:
                 return None  # Already committed (idempotent)
+            
+            existing_hold = self.db.query(LeaveLedger).filter(
+                LeaveLedger.ll_ref_leave_req_id == ref_leave_req_id,
+                LeaveLedger.ll_action == "HOLD"
+            ).first()
+
+            if existing_hold:
+                existing_hold.ll_action = "COMMIT"
+
+                self.db.add(existing_hold)
+                self.db.flush()
+
+                return existing_hold
+            
             
             commit_entry = LeaveLedger(
                 ll_emp_id=emp_id,
@@ -108,7 +158,7 @@ class LeaveLedgerRepository:
                 LeaveLedger.ll_leave_type == leave_type,
                 LeaveLedger.ll_action == "COMMIT"
             ).scalar()
-            
+            print(f"[DEBUG] Leave_type:{leave_type}, Committed total from DB: {committed_total},released_total: {released_total}, held_total: {held_total}")
             committed = float(committed_total or 0.0)
             
             return {

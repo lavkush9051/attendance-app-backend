@@ -213,6 +213,7 @@ def create_attendance_request(
     shift: str = Form(...),
     current_user_emp_id: int = Depends(get_current_user_emp_id),
     attendance_service: AttendanceService = Depends(get_attendance_service)
+
 ):
     """Create an attendance regularization request"""
     print(f"[LOG] /attendance-regularization called with emp_id={emp_id}, date={date}, clock_in={clock_in}, clock_out={clock_out}, current_user={current_user_emp_id}")

@@ -30,6 +30,7 @@ class LeaveRequestCreate(BaseModel):
     to_date: date
     leave_type: str
     reason: str
+    immediate_reporting_officer: str
 
     @validator('to_date')
     def validate_date_range(cls, v, values):
@@ -142,6 +143,9 @@ class LeaveRequestDetailResponse(BaseModel):
     created_at: int
     remarks : Optional[str]
     applied_date: Optional[date] = None
+
+    leave_req_l1_id: Optional[int] = None 
+    leave_req_l2_id: Optional[int] = None
     
     class Config:
         from_attributes = True

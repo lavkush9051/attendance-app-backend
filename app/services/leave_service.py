@@ -1,6 +1,7 @@
 from typing import List, Optional, Dict, Any
 from datetime import date, timedelta
 from sqlalchemy.orm import Session
+from app.repositories.clock_repo import ClockRepository
 from app.repositories.leave_repo import LeaveRepository
 from app.repositories.leave_balance_repo import LeaveBalanceRepository
 from app.repositories.employee_repo import EmployeeRepository
@@ -15,11 +16,13 @@ class LeaveService:
                  leave_balance_repo: LeaveBalanceRepository, 
                  employee_repo: EmployeeRepository,
                  leave_ledger_repo: LeaveLedgerRepository,
+                 clock_repo: ClockRepository,
                  db: Session):
         self.leave_repo = leave_repo
         self.leave_balance_repo = leave_balance_repo
         self.employee_repo = employee_repo
         self.leave_ledger_repo = leave_ledger_repo
+        self.clock_repo = clock_repo
         self.db = db
 
     def append_timeline_remark(self, leave_req, emp_id: int, action: str, remark: str = None):
@@ -52,12 +55,22 @@ class LeaveService:
             # Validate date range
             if request.from_date > request.to_date:
                 raise Exception("From date cannot be after to date")
-
-            if request.from_date < date.today() and request.leave_type.lower() != 'medical leave':
+            
+            # Allow past dates for Medical Leave, Half Pay Leave, and Commuted Leave
+            allowed_past_types = ["medical leave", "half pay leave", "commuted leave", "casual leave", "earned leave"]
+            # if request.from_date < date.today() and request.leave_type.lower() != 'medical leave':
+            #     raise Exception("Cannot apply for past dates")
+            if request.from_date < date.today() and request.leave_type.lower() not in allowed_past_types:
                 raise Exception("Cannot apply for past dates")
 
             # Calculate total days using business days (exclude weekends)
             total_days = self.business_days_inclusive(request.from_date, request.to_date)
+            print(f"[DEBUG] Calculated total_days={total_days} for leave from {request.from_date} to {request.to_date}")
+            
+            if total_days <= 0:
+                raise Exception("Total leave days must be at least 1 or you are applying for weekends only")
+            # total_days2 = self.business_days_optimized(request.from_date, request.to_date)
+            # print(f"[DEBUG] Calculated total_days2={total_days2} for leave from {request.from_date} to {request.to_date}")
 
             # Check for overlapping leaves
             overlapping = self.leave_repo.get_overlapping_leaves(
@@ -65,13 +78,30 @@ class LeaveService:
             )
             if overlapping:
                 raise Exception(f"Leave request overlaps with existing leave from {overlapping[0].leave_req_from_dt} to {overlapping[0].leave_req_to_dt}")
+            
+            # check user is present that day in attendance system
+            records = self.clock_repo.get_attendance_records(
+                emp_id=requesting_emp_id,
+                start_date=request.from_date,
+                end_date=request.to_date
+            )
+
+            if records and len(records) > 0:
+                present_days = set(record.cct_date for record in records)
+                leave_days = set(request.from_date + timedelta(days=i) for i in range((request.to_date - request.from_date).days + 1))
+                common_days = present_days.intersection(leave_days)
+                if common_days:
+                    raise Exception(f"Cannot apply for leave on days when present: {', '.join(str(d) for d in sorted(common_days))}")
 
             # Enhanced balance validation using ledger calculations
-            if request.leave_type.lower() != 'sick':
+            if request.leave_type != 'sick': # Sick leave has no balance restrictions
                 balance_snapshot = self.get_balance_snapshot(requesting_emp_id, request.leave_type)
                 available_balance = balance_snapshot["available"]
-                
-                if total_days > available_balance:
+
+                # DEBUG: log values so you see what is being used
+                print(f"[DEBUG] req.emp={requesting_emp_id} type='{request.leave_type}' total_days={total_days} balance_snapshot={balance_snapshot}")
+
+                if total_days > available_balance and request.leave_type.lower() not in ['commuted leave'] :
                     raise Exception(
                         f"Insufficient {request.leave_type} balance. "
                         f"Requested: {total_days} days, Available: {available_balance} days "
@@ -81,7 +111,8 @@ class LeaveService:
 
             # Get reporting hierarchy for approvals
             hierarchy = self.employee_repo.get_reporting_hierarchy(requesting_emp_id)
-            l1_id = hierarchy.get('l1_id')
+            # l1_id = hierarchy.get('l1_id')
+            l1_id = request.immediate_reporting_officer # chnages here to get l1 id from form input
             l2_id = hierarchy.get('l2_id')
 
             if not l1_id:
@@ -96,8 +127,10 @@ class LeaveService:
                 reason=request.reason,
                 l1_id=l1_id,
                 l2_id=l2_id or l1_id,
-                total_days=total_days
+                total_days=total_days,
+                immediate_reporting_officer=request.immediate_reporting_officer # ✅ NEW FIELD PASSED
             )
+            print(f"[DEBUG] Leave request created: {leave_req}")
 
             # Create HOLD entry in ledger to reserve the leave balance
             self.ledger_hold(requesting_emp_id, request.leave_type, total_days, leave_req.leave_req_id)
@@ -198,7 +231,10 @@ class LeaveService:
                     created_at=req.leave_req_id,
                     remarks=req.remarks or "",
                     applied_date=req.leave_req_applied_dt if hasattr(req, 'leave_req_applied_dt') and req.leave_req_applied_dt else None,
+                    leave_req_l1_id=req.leave_req_l1_id,
+                    leave_req_l2_id=req.leave_req_l2_id,
                 ))
+                #print(f"[DEBUG] Admin request: {req.leave_req_l2_id}, {req.leave_req_l1_id}, can_approve={can_approve}, action_level={action_level}")
 
             return results
 
@@ -372,7 +408,11 @@ class LeaveService:
                     request.leave_req_emp_id, request.leave_req_type, -float((request.leave_req_to_dt - request.leave_req_from_dt).days + 1)
                 )
 
-            return self.leave_repo.delete_by_id(request_id)
+            res = self.leave_repo.delete_by_id(request_id)
+            self.leave_ledger_repo.create_release(
+                request.leave_req_emp_id, request.leave_req_type, float((request.leave_req_to_dt - request.leave_req_from_dt).days + 1), request_id
+            )
+            return res
 
         except Exception as e:
             # Re-raise to preserve original error message
@@ -438,21 +478,85 @@ class LeaveService:
             cur += one
         return float(days)
     
+    from datetime import date, timedelta
+
+    # def business_days_optimized(self, start_dt: date, end_dt: date, holidays=None) -> int:
+    #     """
+    #     Calculates business days using integer math for speed.
+    #     - O(1) complexity (instant calculation regardless of date range).
+    #     - Supports an optional list of holiday dates to exclude.
+    #     """
+    #     if isinstance(start_dt, list) or isinstance(end_dt, list):
+    #         raise ValueError("Error: You passed a list as a date. usage: func(date, date, list)")
+    #     if end_dt < start_dt:
+    #         return 0
+
+    #     # 1. Calculate the total span of days
+    #     diff = (end_dt - start_dt).days + 1
+        
+    #     # 2. Calculate full weeks and remaining days
+    #     full_weeks = diff // 7
+    #     remaining_days = diff % 7
+        
+    #     # 3. Initial calculation: 5 days per full week
+    #     business_days = full_weeks * 5
+
+    #     # 4. Handle the "remainder" days (max 6 iterations, very fast)
+    #     # We move the pointer to the start of the 'remainder' period
+    #     current_date = start_dt + timedelta(days=full_weeks * 7)
+        
+    #     for _ in range(remaining_days):
+    #         if current_date.weekday() < 5: # 0-4 are weekdays
+    #             business_days += 1
+    #         current_date += timedelta(days=1)
+
+    #     # 5. Handle Holidays (Subtract if they fall on a weekday)
+    #     # This is efficient: we only check provided holidays within the range
+    #     if holidays:
+    #         # Convert to set for O(1) lookups
+    #         holiday_set = set(holidays)
+            
+    #         # Filter holidays that are: 
+    #         # a) Within range 
+    #         # b) On a weekday (since we didn't count weekend-holidays anyway)
+    #         deductible_holidays = [
+    #             h for h in holiday_set 
+    #             if start_dt <= h <= end_dt and h.weekday() < 5
+    #         ]
+    #         business_days -= len(deductible_holidays)
+
+    #     return business_days
+
+    # # --- Example Usage ---
+    # start = date(2023, 12, 1)  # Friday
+    # end = date(2023, 12, 18)   # Monday (Total 18 days span)
+    # # Assume Dec 25th is a holiday
+    # holidays_list = [date(2023, 12, 25)] 
+    # result = business_days_optimized(start, end, holidays_list)
+    # print(f"Business Days: {result}")
+    
     def get_balance_snapshot(self, emp_id: int, leave_type: str) -> dict:
         """Get current balance snapshot for leave type with ledger calculations"""
         try:
-            # Get accrued balance from LeaveBalance table via repository
+            # Normalize leave type    
+            #normalized_key = (leave_type or "").strip().lower()
+            # Get accrued balance (this method now supports normalized keys)
             accrued = self.leave_balance_repo.get_by_employee_and_type(emp_id, leave_type)
+            #print(f"[DEBUG] get_balance_snapshot: emp={emp_id}, type='{leave_type}', normalized_key='{normalized_key}', accrued={accrued}")
             if accrued is None:
                 accrued = 0.0
             
             # Get ledger totals via repository
             ledger_totals = self.leave_ledger_repo.get_balance_totals(emp_id, leave_type)
-            held = ledger_totals["held"]
-            committed = ledger_totals["committed"]
+            print(f"[DEBUG] Ledger totals for emp={emp_id}, type='{leave_type}': {ledger_totals}")
+            held = ledger_totals.get("held", 0)
+            print(f"[DEBUG] Held leaves: {held}")
+            committed = ledger_totals.get("committed", 0)
+            print(f"[DEBUG] Committed leaves: {committed}")
             
             # Available = accrued - committed - held
             available = float(accrued) - committed - held
+            print(f"[DEBUG] Calculated available leaves: {available}")
             
             return {
                 "accrued": round(float(accrued), 2),
@@ -460,6 +564,7 @@ class LeaveService:
                 "committed": round(committed, 2),
                 "available": round(max(0.0, available), 2)
             }
+        
             
         except Exception as e:
             raise Exception(f"Error getting balance snapshot: {str(e)}")
@@ -489,6 +594,7 @@ class LeaveService:
         """Create a COMMIT entry in the leave ledger via repository (with idempotency check)"""
         try:
             commit_entry = self.leave_ledger_repo.create_commit(emp_id, leave_type, qty, req_id)
+            print(f"[DEBUG] ledger_commit:commit_entry={commit_entry}")
             if commit_entry:
                 print(f"[LEDGER] COMMIT created: emp={emp_id}, type={leave_type}, qty={qty}, req={req_id}")
             else:
@@ -569,10 +675,11 @@ class LeaveService:
     # L1/L2 APPROVAL WORKFLOW  
     # ===============================
     
-    def l1_approve_leave_request(self, req_id: int, approver_id: int, remarks: str = None) -> dict:
+    def l1_approve_leave_request(self, req_id: int, approver_id: int, remarks: str = None, next_reporting_officer: str= None) -> dict:
         """L1 manager approves leave request"""
         try:
             # Get leave request via repository
+            print(f"[L1 APPROVAL] req_id={req_id}, approver_id={approver_id}, remarks='{remarks}', next_reporting_officer='{next_reporting_officer}'")
             leave_req = self.leave_repo.get_by_id(req_id)
             if not leave_req:
                 raise Exception(f"Leave request {req_id} not found")
@@ -586,9 +693,9 @@ class LeaveService:
                 raise Exception(f"Leave request already processed by L1. Current status: {leave_req.leave_req_l1_status}")
             
             # Check if L2 approval is needed
-            if leave_req.leave_req_l2_id and leave_req.leave_req_l2_id != leave_req.leave_req_l1_id:
+            if leave_req.leave_req_l2_id==None and leave_req.leave_req_l2_id != leave_req.leave_req_l1_id:
                 # L2 approval needed - update L1 status and overall status to "L1 Approved"
-                self.leave_repo.update_status(req_id, "L1 Approved", "Approved", None)
+                self.leave_repo.update_status(req_id, "L1 Approved", "Approved", None, next_reporting_officer)
                 # Add L1 remarks in timeline format
                 self.append_timeline_remark(leave_req, approver_id, "Approved", remarks)
                 self.db.commit()
@@ -599,12 +706,12 @@ class LeaveService:
                 
                 # COMMIT the leave in ledger (final approval)
                 total_days = float((leave_req.leave_req_to_dt - leave_req.leave_req_from_dt).days + 1)
-                self.ledger_commit(
-                    leave_req.leave_req_emp_id, 
-                    leave_req.leave_req_type, 
-                    total_days, 
-                    req_id
-                )
+                # self.ledger_commit(
+                #     leave_req.leave_req_emp_id, 
+                #     leave_req.leave_req_type, 
+                #     total_days, 
+                #     req_id
+                # )
                 
                 # Add L1 remarks in timeline format
                 self.append_timeline_remark(leave_req, approver_id, "Approved", remarks)
@@ -755,8 +862,8 @@ class LeaveService:
             
             # Check if leave start date is greater than today
             from datetime import date
-            if leave_req.leave_req_from_dt <= date.today():
-                raise Exception("Cannot cancel leave request as leave start date must be greater than today")
+            # if leave_req.leave_req_from_dt <= date.today():
+            #     raise Exception("Cannot cancel leave request as leave start date must be greater than today")
             
             # Update status
             leave_req.leave_req_status = "Cancelled"
@@ -896,3 +1003,11 @@ class LeaveService:
         except Exception as e:
             self.db.rollback()
             raise Exception(f"Error in L2 cancellation: {str(e)}")
+
+# ===============================
+# canonical_leave_name
+# ===============================
+    def canonical_leave_name(name: str) -> str:
+    # return consistent string used in ledger and in mapping keys
+    # example: keep original capitalization but trim whitespace
+      return (name or "").strip()

@@ -203,3 +203,40 @@ def get_reporting_levels(
     except Exception as e:
         print(f"[ERROR] /reporting-levels exception: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+    
+@router.get("/designations")
+async def api_get_employees_by_designations(
+    #admin_emp_id: int = Depends(validate_admin_access),
+    employee_service: EmployeeService = Depends(get_employee_service)
+):
+    """Get employees by designations - Admin access required"""
+    #print(f"[LOG] /employees/designations called by admin {admin_emp_id}")
+    print(f"[LOG] /employees/designations called")
+    try:
+        employees = employee_service.get_EmpsList_by_Designations()
+        print(f"[LOG] /employees/designations fetched {len(employees)} employees from service")
+        # Convert to frontend expected format
+        formatted_employees = []
+        for emp in employees:
+            employee_dict = {
+                "id": str(emp.emp_id),  # Frontend expects string ID
+                "emp_id": str(emp.emp_id),
+                "name": emp.emp_name,  # Frontend expects 'name', not 'emp_name'
+                "email": emp.emp_email or "",
+                "phone": emp.emp_contact or "",
+                "department": emp.emp_department or "",
+                "designation": emp.emp_designation or "",
+                "manager_id": str(emp.emp_l1) if emp.emp_l1 else "",
+                "join_date": str(emp.emp_joining_date) if hasattr(emp, 'emp_joining_date') and emp.emp_joining_date else "",
+                "status": "active",  # Default status - you may want to add this field to your model
+                "shift": getattr(emp, 'emp_shift', 'General'),
+                "week_off": emp.emp_weekoff or "Sunday",
+                "profile_image": ""  # Add if you have profile images
+            }
+            formatted_employees.append(employee_dict)
+        
+        print(f"[LOG] /employees/designations returning {len(formatted_employees)} employees")
+        return JSONResponse(content=formatted_employees)
+    except Exception as e:
+        print(f"[ERROR] /employees/designations exception: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))   

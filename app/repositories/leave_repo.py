@@ -66,7 +66,7 @@ class LeaveRepository:
 
     def create(self, emp_id: int, from_date: date, to_date: date, 
               leave_type: str, reason: str, l1_id: int, l2_id: int, 
-              total_days: float) -> LeaveRequest:
+              total_days: float, immediate_reporting_officer: str) -> LeaveRequest:
         """Create a new leave request"""
         try:
             leave_req = LeaveRequest(
@@ -78,11 +78,11 @@ class LeaveRepository:
                 leave_req_status="Pending",  # Initial status matching old system
                 leave_req_l1_status="Pending",
                 leave_req_l2_status="Pending",
-                leave_req_l1_id=l1_id,
-                leave_req_l2_id=l2_id,
-                leave_req_applied_dt=date.today()  # Set applied date to today
+                leave_req_l1_id=immediate_reporting_officer,
+                leave_req_l2_id= None,
+                leave_req_applied_dt=date.today(),
             )
-            
+            print(f"[DEBUG] Creating leave request: {leave_req}")
             self.db.add(leave_req)
             self.db.commit()
             self.db.refresh(leave_req)
@@ -99,7 +99,7 @@ class LeaveRepository:
             raise Exception(f"Database error while fetching leave request: {str(e)}")
 
     def update_status(self, request_id: int, status: str, l1_status: Optional[str] = None, 
-                     l2_status: Optional[str] = None) -> Optional[LeaveRequest]:
+                     l2_status: Optional[str] = None, next_reporting_officer: str=None) -> Optional[LeaveRequest]:
         """Update leave request status"""
         try:
             req = self.get_by_id(request_id)
@@ -107,6 +107,9 @@ class LeaveRepository:
                 return None
 
             req.leave_req_status = status
+            #req.leave_req_l2_id = next_reporting_officer
+            if next_reporting_officer:
+                req.leave_req_l2_id = next_reporting_officer
             if l1_status:
                 req.leave_req_l1_status = l1_status
             if l2_status:
@@ -145,7 +148,7 @@ class LeaveRepository:
                     and_(LeaveRequest.leave_req_from_dt <= to_date, LeaveRequest.leave_req_to_dt >= to_date),
                     and_(LeaveRequest.leave_req_from_dt >= from_date, LeaveRequest.leave_req_to_dt <= to_date)
                 ),
-                LeaveRequest.leave_req_status != "Rejected"
+                LeaveRequest.leave_req_status != "Rejected" and LeaveRequest.leave_req_status != "Cancelled"
             )
             
             if exclude_id:

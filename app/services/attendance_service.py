@@ -53,7 +53,7 @@ class AttendanceService:
 
             # Get reporting hierarchy for approvals - L1 only workflow
             hierarchy = self.employee_repo.get_reporting_hierarchy(requesting_emp_id)
-            l1_id = hierarchy.get('l1_id')
+            l1_id = hierarchy.get('l1_id')  
             # L2 workflow commented for future use
             # l2_id = hierarchy.get('l2_id')
 

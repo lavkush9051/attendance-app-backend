@@ -25,6 +25,17 @@ class EmployeeService:
             return [EmployeeResponse.from_orm(emp) for emp in employees]
         except Exception as e:
             raise Exception(f"Service error while fetching employees: {str(e)}")
+        
+    # Api for getting designation wise data...    
+    def get_EmpsList_by_Designations(self) -> List[EmployeeResponse]:
+        """Get all employees with proper response format"""
+        try:
+            print("[DEBUG] Fetching employees by specific designations...")
+            employees = self.employee_repo.get_emps_by_designations()
+
+            return [EmployeeResponse.from_orm(emp) for emp in employees]
+        except Exception as e:
+            raise Exception(f"Service error while fetching employees: {str(e)}")
 
     def get_employee_by_id(self, emp_id: int) -> Optional[EmployeeResponse]:
         """Get employee by ID"""
