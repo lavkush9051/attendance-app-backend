@@ -19,10 +19,10 @@ def is_within_geofence(user_lat: float, user_lon: float, office_lat: float, offi
         True if the user is within the geofence, False otherwise.
     """
     try:
-        user_lat = round(user_lat, 4)
-        user_lon = round(user_lon, 4)
-        office_lat = round(office_lat, 4)
-        office_lon = round(office_lon, 4)
+        user_lat = round(user_lat, 7)
+        user_lon = round(user_lon, 7)
+        office_lat = round(office_lat, 7)
+        office_lon = round(office_lon, 7)
         
         user_location = (user_lat, user_lon)
         office_location = (office_lat, office_lon)
@@ -38,5 +38,20 @@ def is_within_geofence(user_lat: float, user_lon: float, office_lat: float, offi
         print(f"[GEO_ERROR] Invalid latitude or longitude value: {e}")
         return False
 
+# new helper function for distance showing
+def calculate_distance_meters(user_lat: float, user_lon: float, office_lat: float, office_lon: float) -> float:
+    """
+    Returns the geodesic distance between user and office in meters.
+    This helper is used when you also want to show how far user is.
+    """
+    try:
+        user_location = (float(user_lat), float(user_lon))
+        office_location = (float(office_lat), float(office_lon))
+        distance = geodesic(user_location, office_location).meters
+        print(f"[GEO_LOG] Calculated distance: {distance:.2f} meters")
+        return distance
+    except Exception as e:
+        print(f"[GEO_ERROR] calculate_distance_meters exception: {e}")
+        return float("inf")
 
 ### How to Use This

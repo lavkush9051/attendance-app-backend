@@ -5,9 +5,21 @@ import numpy as np
 import cv2
 
 class FaceEngine:
+    _instance = None
+    _initialized = False
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(FaceEngine, cls).__new__(cls)
+        return cls._instance
+    
     def __init__(self):
-        self.app = insightface.app.FaceAnalysis(name='buffalo_l')
-        self.app.prepare(ctx_id=0)  # GPU=0, CPU=-1
+        if not FaceEngine._initialized:
+            print("[INIT] Loading FaceAnalysis model (one-time initialization)...")
+            self.app = insightface.app.FaceAnalysis(name='buffalo_l')
+            self.app.prepare(ctx_id=0)  # GPU=0, CPU=-1
+            FaceEngine._initialized = True
+            print("[INIT] FaceAnalysis model loaded successfully")
 
     def extract_descriptor(self, image_bytes):
         nparr = np.frombuffer(image_bytes, np.uint8)

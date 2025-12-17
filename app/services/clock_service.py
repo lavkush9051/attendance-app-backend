@@ -13,42 +13,69 @@ class ClockService:
         self.face_repo = face_repo
 
     def process_clock_in(self, request: ClockInRequest) -> ClockInResponse:
-        """Process employee clock-in with face validation and geofencing"""
+        """Process employee clock-in with face validation, shift window rules, and geofencing stub"""
         try:
             # Validate shift exists
             shift_info = self.clock_repo.get_shift_by_abbrev(request.shift)
             if not shift_info:
                 raise Exception(f"Invalid shift: {request.shift}")
 
-            # Validate face if provided
+            # --- Shift time window validation (IST) ---
+            from zoneinfo import ZoneInfo
+            IST = ZoneInfo("Asia/Kolkata")
+            now_ist = datetime.now(IST)
+            today_ist = now_ist.date()
+
+            shift_start_dt = datetime.combine(today_ist, shift_info.est_shift_start_time, IST)
+            shift_end_dt = datetime.combine(today_ist, shift_info.est_shift_end_time, IST)
+            if shift_end_dt <= shift_start_dt:
+                # Overnight shift crosses midnight
+                shift_end_dt += timedelta(days=1)
+
+            # First clock-in window: 15 min before to 15 min after shift start
+            early_window_start = shift_start_dt - timedelta(minutes=15)
+            early_window_end = shift_start_dt + timedelta(minutes=15)
+
+            existing_record = self.clock_repo.get_today_clockin(request.emp_id, today_ist)
+            if existing_record is None:
+                # First clock-in => must fall within early window
+                if not (early_window_start <= now_ist <= early_window_end):
+                    fmt = lambda dt: dt.strftime("%H:%M")
+                    raise Exception(
+                        f"First clock-in only allowed between {fmt(early_window_start)} and {fmt(early_window_end)} (shift {request.shift})."
+                    )
+            else:
+                # Subsequent clock-ins => must be inside actual shift window
+                if not (shift_start_dt <= now_ist <= shift_end_dt):
+                    fmt = lambda dt: dt.strftime("%H:%M")
+                    raise Exception(
+                        f"Additional clock-ins allowed only within shift window {fmt(shift_start_dt)} to {fmt(shift_end_dt)}."
+                    )
+
+            # Validate face if provided (face repo contains embeddings registration status)
             if request.face_image:
                 face_exists = self.face_repo.exists_for_employee(request.emp_id)
                 if not face_exists:
                     raise Exception("No face record found for employee. Please register face first.")
-                
-                # TODO: Implement actual face recognition comparison
-                # For now, we assume face validation passes
+                # Actual face match handled outside (route) for now
 
-            # Check geofencing if coordinates provided
+            # Geofencing placeholder (already enforced upstream route; keep stub for future service move)
             if request.latitude and request.longitude:
-                # TODO: Implement geofencing validation
-                # For now, we assume location is valid
                 pass
 
-            # Allow multiple clock-ins - repository will handle keeping first clock-in time
-            today = datetime.now().date()
-
-            # Create or get existing clock-in record
+            # Persist (repository keeps first clock-in time if already exists)
             clock_record = self.clock_repo.create_clockin(
                 emp_id=request.emp_id,
-                today=today,
-                clockin_time=request.clockin_time or datetime.now().time(),
+                today=today_ist,
+                clockin_time=(request.clockin_time or now_ist.time().replace(microsecond=0)),
                 shift=request.shift
             )
 
+            requested_time = (request.clockin_time or now_ist.time().replace(microsecond=0))
+            kept_first = clock_record.cct_clockin_time == requested_time
             return ClockInResponse(
                 success=True,
-                message="Clock-in successful" if clock_record.cct_clockin_time == (request.clockin_time or datetime.now().time()) else "Clock-in recorded (keeping first time of day)",
+                message="Clock-in successful" if kept_first else "Clock-in recorded (keeping first time of day)",
                 clockin_id=clock_record.cct_id,
                 clockin_time=clock_record.cct_clockin_time,
                 employee_id=clock_record.cct_emp_id,

@@ -4,11 +4,12 @@ from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
 from typing import Dict, Any
 from app.face_engine import FaceEngine
-from app.services.geo_fence_service import is_within_geofence
-from app.dependencies import get_current_user_emp_id, get_clock_service, get_face_service
+from app.services.geo_fence_service import is_within_geofence, calculate_distance_meters
+from app.dependencies import get_current_user_emp_id, get_clock_service, get_face_service, get_geofence_service
 from app.auth import get_current_user
 from app.services.clock_service import ClockService
 from app.services.face_service import FaceService
+from app.services.geofence_service import GeofenceService
 import numpy as np
 
 router = APIRouter()
@@ -17,7 +18,7 @@ IST = ZoneInfo("Asia/Kolkata")
 CLOCKIN_THRESHOLD = 0.75
 OFFICE_LATITUDE = 19.1158577
 OFFICE_LONGITUDE = 72.8934000
-GEOFENCE_RADIUS_METERS = 100
+GEOFENCE_RADIUS_METERS = 50
 
 engine = FaceEngine()
 
@@ -26,11 +27,12 @@ async def clockin(
     file: UploadFile = File(...),
     face_user_emp_id: str = Form(...),
     shift: str = Form(...),
-    lat: float = Form(...),
-    lon: float = Form(...),
+    lat: float = Form(0.0),
+    lon: float = Form(0.0),
     current_emp_id: int = Depends(get_current_user_emp_id),
     clock_service: ClockService = Depends(get_clock_service),
-    face_service: FaceService = Depends(get_face_service)
+    face_service: FaceService = Depends(get_face_service),
+    geofence_service: GeofenceService = Depends(get_geofence_service)
 ):
     """Clock-in endpoint with face recognition and geofencing validation"""
     
@@ -46,20 +48,25 @@ async def clockin(
     
     print(f"[LOG] Clock-in attempt by emp_id {face_user_emp_id} for shift {shift} at location ({lat}, {lon})")
     
-    # --- 1. Geofencing Validation (only for emp_id=10001) ---
-    # if int(face_user_emp_id) == 10001:
-    #     is_location_valid = is_within_geofence(
-    #         user_lat=lat,
-    #         user_lon=lon,
-    #         office_lat=OFFICE_LATITUDE,
-    #         office_lon=OFFICE_LONGITUDE,
-    #         radius_meters=20  # 20 meters for strict geofence
-    #     )
-    #     if not is_location_valid:
-    #         return {
-    #             "status": "failed",
-    #             "reason": f"Clock-in failed. You must be within 20 meters of the office."
-    #         }
+    # --- 1. Geofencing Validation using database-driven geofence service ---
+    validation_result = geofence_service.validate_employee_location(
+        emp_id=int(face_user_emp_id),
+        user_lat=lat,
+        user_lon=lon
+    )
+    
+    if not validation_result["is_valid"]:
+        print(f"[GEO_LOG] Geofence validation failed for emp {face_user_emp_id}: {validation_result['message']}")
+        return {
+            "status": "failed",
+            "reason": validation_result["message"],
+            "code": validation_result.get("code"),
+            "distance": validation_result.get("distance"),
+            "nearest_block": validation_result.get("nearest_block"),
+            "allowed_radius": validation_result.get("allowed_radius")
+        }
+    
+    print(f"[GEO_LOG] ✅ Geofence validation passed for emp {face_user_emp_id}: {validation_result['message']}")
     
     # --- 2. Face Recognition ---
     content = await file.read()

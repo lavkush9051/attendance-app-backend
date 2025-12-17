@@ -10,11 +10,13 @@ from app.repositories.leave_repo import LeaveRepository
 from app.repositories.leave_balance_repo import LeaveBalanceRepository
 from app.repositories.leave_ledger_repo import LeaveLedgerRepository
 from app.repositories.face_repo import FaceRepository
+from app.repositories.geofence_repo import GeofenceRepository
 from app.services.employee_service import EmployeeService
 from app.services.clock_service import ClockService
 from app.services.attendance_service import AttendanceService
 from app.services.leave_service import LeaveService
 from app.services.face_service import FaceService
+from app.services.geofence_service import GeofenceService
 
 # Repository Dependencies
 def get_employee_repository(db: Session = Depends(get_db)) -> EmployeeRepository:
@@ -44,6 +46,10 @@ def get_face_repository(db: Session = Depends(get_db)) -> FaceRepository:
 def get_leave_ledger_repository(db: Session = Depends(get_db)) -> LeaveLedgerRepository:
     """Get leave ledger repository instance"""
     return LeaveLedgerRepository(db)
+
+def get_geofence_repository(db: Session = Depends(get_db)) -> GeofenceRepository:
+    """Get geofence repository instance"""
+    return GeofenceRepository(db)
 
 # Service Dependencies
 def get_employee_service(
@@ -83,6 +89,12 @@ def get_face_service(
 ) -> FaceService:
     """Get face service instance"""
     return FaceService(face_repo)
+
+def get_geofence_service(
+    geofence_repo: GeofenceRepository = Depends(get_geofence_repository)
+) -> GeofenceService:
+    """Get geofence service instance"""
+    return GeofenceService(geofence_repo)
 
 # Authentication Dependencies
 from app.auth import get_current_user, get_current_employee_id as get_current_user_emp_id

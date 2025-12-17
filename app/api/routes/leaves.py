@@ -450,10 +450,28 @@ async def create_leave_request(
     except HTTPException:
         session.rollback()
         raise
+    except ValueError as e:
+        # Date parsing errors
+        session.rollback()
+        print(f"[WARNING] /leave-request validation issue: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         session.rollback()
-        print(f"[ERROR] /leave-request exception: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        error_msg = str(e)
+        
+        # Check if it's a validation error (use 400) or server error (use 500)
+        validation_keywords = [
+            "overlaps", "balance", "cannot", "insufficient", "not found", 
+            "past dates", "after to date", "already", "required"
+        ]
+        is_validation = any(keyword in error_msg.lower() for keyword in validation_keywords)
+        
+        if is_validation:
+            print(f"[INFO] /leave-request validation message: {error_msg}")
+            raise HTTPException(status_code=400, detail=error_msg)
+        else:
+            print(f"[ERROR] /leave-request exception: {error_msg}")
+            raise HTTPException(status_code=500, detail=error_msg)
     finally:
         session.close()
 
