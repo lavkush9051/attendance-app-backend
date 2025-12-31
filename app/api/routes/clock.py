@@ -66,7 +66,7 @@ async def clockin(
             "allowed_radius": validation_result.get("allowed_radius")
         }
     
-    print(f"[GEO_LOG] ✅ Geofence validation passed for emp {face_user_emp_id}: {validation_result['message']}")
+    print(f"[GEO_LOG] Geofence validation passed for emp {face_user_emp_id}: {validation_result['message']}")
     
     # --- 2. Face Recognition ---
     content = await file.read()
