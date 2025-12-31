@@ -49,6 +49,7 @@ class ClockRepository:
                     cct_date=today,
                     cct_clockin_time=clockin_time,
                     cct_shift_abbrv=shift,
+                    cct_synced_with_sap="N"
                 )
                 self.db.add(clockin_record)
                 self.db.commit()

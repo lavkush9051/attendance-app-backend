@@ -128,12 +128,18 @@ def get_leave_requests(
     leave_service: LeaveService = Depends(get_leave_service)
 ):
     """Get leave requests for employee or admin view"""
-    print(f"[LOG] /leave-requests/{emp_id} called by user {current_emp_id}, admin={admin}")
+    print(f"[LOG] /leave-requests/{emp_id} called by user {current_emp_id}, admin={admin}, status={status}")
     try:
         emp_id_int = int(emp_id)
         if not admin:
             # Employee view: get their own leave requests
             employee_requests = leave_service.get_employee_leave_requests(emp_id_int)
+            
+            if status:
+                # exclude  if employee_requests.status.lower() = 'rejected' or 'cancelled'
+                #employee_requests = [req for req in employee_requests if req.status.lower() != 'rejected' and req.status.lower() != 'cancelled']
+                employee_requests = [req for req in employee_requests if req.status.lower() == 'approved']
+                print(f"[DEBUG] Employee requests from service: {len(employee_requests)}")    
             
             # Convert to frontend expected format
             formatted_requests = []
@@ -454,10 +460,22 @@ async def create_leave_request(
        raise http_err    # <-- return original structured error
        
     except Exception as e:
-     session.rollback()
-     print(f"[ERROR] /leave-request exception: {str(e)}")
-     raise HTTPException( 500, detail=str(e))
-     perint(f"[ERROR] /leave-request exception: {str(e)}")
+        session.rollback()
+        error_msg = str(e)
+        
+        # Check if it's a validation error (use 400) or server error (use 500)
+        validation_keywords = [
+            "overlaps", "balance", "cannot", "insufficient", "not found", 
+            "past dates", "after to date", "already", "required"
+        ]
+        is_validation = any(keyword in error_msg.lower() for keyword in validation_keywords)
+        
+        if is_validation:
+            print(f"[INFO] /leave-request validation message: {error_msg}")
+            raise HTTPException(status_code=400, detail=error_msg)
+        else:
+            print(f"[ERROR] /leave-request exception: {error_msg}")
+            raise HTTPException(status_code=500, detail=error_msg)
     finally:
         session.close()
 
@@ -552,19 +570,14 @@ def delete_leave_request(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# @router.get("/leave-balance/snapshot")
-# def get_leave_balance_snapshot(
+
+# @router.get("/leave-balance")
+# def get_leave_balance(
 #     emp_id: int = Query(...),
 #     current_emp_id: int = Depends(get_current_user_emp_id),
 #     leave_service: LeaveService = Depends(get_leave_service)
 # ):
-#     """
-#     Returns per-type balances using the HOLD/RELEASE/COMMIT ledger:
-#       accrued   -> from leave_tbl
-#       held      -> sum(HOLD) - sum(RELEASE)
-#       committed -> sum(COMMIT)
-#       available -> accrued - committed - max(0, held)
-#     """
+#     """Get basic leave balance for an employee"""
 #     try:
 #         # Authorization check: users can only view their own leave balance
 #         if emp_id != current_emp_id:
@@ -573,30 +586,10 @@ def delete_leave_request(
 #                 detail="Access denied - can only view your own leave balance"
 #             )
         
-#         balance_snapshot = leave_service.get_leave_balance_snapshot(emp_id)
-#         return balance_snapshot
+#         balance_data = leave_service.get_employee_leave_balance(emp_id)
+#         return {"status": "success", "data": balance_data}
 #     except Exception as e:
 #         raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/leave-balance")
-def get_leave_balance(
-    emp_id: int = Query(...),
-    current_emp_id: int = Depends(get_current_user_emp_id),
-    leave_service: LeaveService = Depends(get_leave_service)
-):
-    """Get basic leave balance for an employee"""
-    try:
-        # Authorization check: users can only view their own leave balance
-        if emp_id != current_emp_id:
-            raise HTTPException(
-                status_code=403,
-                detail="Access denied - can only view your own leave balance"
-            )
-        
-        balance_data = leave_service.get_employee_leave_balance(emp_id)
-        return {"status": "success", "data": balance_data}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/leave-types")
 def get_leave_types(
@@ -788,21 +781,21 @@ def get_balance_snapshot(db: Session, emp_id: int, leave_type: str) -> dict:
 
 # Removed helper functions - moved to service layer via repository pattern
 
-@router.get("/balance-snapshot/{emp_id}")
-def get_employee_balance_snapshot(
-    emp_id: int,
-    leave_type: Optional[str] = Query(None, description="Leave type filter"),
-    current_emp_id: int = Depends(get_current_user_emp_id),
-    leave_service: LeaveService = Depends(get_leave_service)
-):
-    """
-    Get balance snapshot for employee showing accrued, held, committed, and available balances
-    """
-    try:
-        result = leave_service.get_employee_balance_snapshot(emp_id, current_emp_id, leave_type)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving balance snapshot: {str(e)}")
+# @router.get("/balance-snapshot/{emp_id}")
+# def get_employee_balance_snapshot(
+#     emp_id: int,
+#     leave_type: Optional[str] = Query(None, description="Leave type filter"),
+#     current_emp_id: int = Depends(get_current_user_emp_id),
+#     leave_service: LeaveService = Depends(get_leave_service)
+# ):
+#     """
+#     Get balance snapshot for employee showing accrued, held, committed, and available balances
+#     """
+#     try:
+#         result = leave_service.get_employee_balance_snapshot(emp_id, current_emp_id, leave_type)
+#         return result
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Error retrieving balance snapshot: {str(e)}")
 
 @router.post("/approve/l1/{req_id}")
 def l1_approve_leave(

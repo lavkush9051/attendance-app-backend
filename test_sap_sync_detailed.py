@@ -41,7 +41,7 @@ async def test_sap_sync():
         ]
         
         # Test syncing for all shifts
-        current_date = datetime.now()
+        current_date = datetime(2025, 11, 17)  # put hardcoded date
         logger.info(f"Testing SAP sync for date: {current_date.date()}")
         
         for shift in shifts:

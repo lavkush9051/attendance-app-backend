@@ -148,7 +148,7 @@ class LeaveRepository:
                     and_(LeaveRequest.leave_req_from_dt <= to_date, LeaveRequest.leave_req_to_dt >= to_date),
                     and_(LeaveRequest.leave_req_from_dt >= from_date, LeaveRequest.leave_req_to_dt <= to_date)
                 ),
-                LeaveRequest.leave_req_status != "Rejected"
+                LeaveRequest.leave_req_status != "Rejected" and LeaveRequest.leave_req_status != "Cancelled"
             )
             
             if exclude_id:
