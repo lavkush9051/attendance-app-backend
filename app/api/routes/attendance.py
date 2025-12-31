@@ -249,11 +249,18 @@ def create_attendance_request(
         result = {"status": "success", "art_id": response.request_id}
         print(f"[LOG] /attendance-regularization success: {result}")
         return result
-            
+    except HTTPException as e:
+    # 🔥 IMPORTANT: rethrow HTTPException as-is
+       raise e        
     except Exception as e:
-        print(f"[ERROR] /attendance-regularization exception: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
+         print(f"[ERROR] /attendance-regularization exception: {str(e)}")
+         raise HTTPException(
+             status_code=500,
+             detail={
+                "success": False,
+                "message": "Internal server error"
+           }
+      )
 @router.put("/attendance-request/action")
 async def attendance_action(
     attendance_request_id: int = Body(...),

@@ -29,7 +29,15 @@ def signup(user: UserCreate, db: Session = Depends(get_db)):
         existing_user = db.query(AppUser).filter(AppUser.username == user.username).first()
         if existing_user:
             print(f"[ERROR] /signup user already exists: {user.username}")
-            raise HTTPException(status_code=400, detail="User already exists.")
+            raise HTTPException(
+                status_code=400, 
+                # detail="User already exists."
+                detail={
+                      "success": False,
+                      "message": "User already exists.",
+                      "error_code": "USER_EXISTS"
+                      } 
+                )
         
         hashed_pwd = get_password_hash(user.password)
         new_user = AppUser(username=user.username, hashed_password=hashed_pwd)
@@ -38,7 +46,10 @@ def signup(user: UserCreate, db: Session = Depends(get_db)):
         db.refresh(new_user)
         
         print(f"[LOG] /signup successful for user: {user.username}")
-        return {"message": "User created successfully"}
+        return {
+            "success": True,
+            "message": "User created successfully"
+            }
     except HTTPException:
         raise
     except Exception as e:
@@ -50,9 +61,31 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
     print(f"[LOG] /login attempt for user: {user.username}")
     try:
         db_user = db.query(AppUser).filter(AppUser.username == user.username).first()
-        if not db_user or not verify_password(user.password, db_user.hashed_password):
+
+        if not db_user:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "success": False,
+                    "message": "Username does not exist",
+                    "error_code": "USER_NOT_FOUND"
+                }
+            )
+
+        if not verify_password(user.password, db_user.hashed_password):
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "success": False,
+                    "message": "Incorrect password",
+                    "error_code": "INVALID_PASSWORD"
+                }
+            )
+
+
+        # if not db_user or not verify_password(user.password, db_user.hashed_password):
             print(f"[ERROR] /login invalid credentials for user: {user.username}")
-            raise HTTPException(status_code=401, detail="Invalid credentials")
+            # raise HTTPException(status_code=401, detail="Invalid credentials")
         
         token = create_access_token({"username": db_user.username})
 
@@ -60,7 +93,15 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
         employee = db.query(Employee).filter(Employee.emp_id == db_user.app_emp_id).first()
         if not employee:
             print(f"[ERROR] /login employee not found for user: {user.username}")
-            raise HTTPException(status_code=404, detail="Employee not found")
+            raise HTTPException(
+                       status_code=404, 
+                    #    detail="Employee not found"
+                           detail={
+                    "success": False,
+                    "message": "Employee mapping not found",
+                    "error_code": "EMPLOYEE_NOT_FOUND"
+                }
+                       )
         # Fetch L1 and L2 names
         l1_manager = db.query(Employee).filter(Employee.emp_id == employee.emp_l1).first() if employee.emp_l1 else None
         l2_manager = db.query(Employee).filter(Employee.emp_id == employee.emp_l2).first() if employee.emp_l2 else None
