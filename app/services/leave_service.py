@@ -10,6 +10,7 @@ from app.schemas.leaves import (
     LeaveRequestCreate, LeaveRequestResponse, LeaveRequestDetailResponse,
     LeaveStatusUpdate, LeaveBalanceResponse
 )
+from fastapi import HTTPException, status
 
 class LeaveService:
     def __init__(self, leave_repo: LeaveRepository, 
@@ -77,7 +78,16 @@ class LeaveService:
                 requesting_emp_id, request.from_date, request.to_date
             )
             if overlapping:
-                raise Exception(f"Leave request overlaps with existing leave from {overlapping[0].leave_req_from_dt} to {overlapping[0].leave_req_to_dt}")
+                # raise Exception(f"Leave request overlaps with existing leave from {overlapping[0].leave_req_from_dt} to {overlapping[0].leave_req_to_dt}")
+                raise HTTPException(
+                       status_code=400,
+                       detail={
+                             "success": False,
+                             "message": f"You already applied for leave from {overlapping[0].leave_req_from_dt} to {overlapping[0].leave_req_to_dt}.",
+                              "error_code": "LEAVE_OVERLAP"
+                              }
+                                    )
+                                
             
             # check user is present that day in attendance system
             records = self.clock_repo.get_attendance_records(
@@ -155,10 +165,25 @@ class LeaveService:
                 l2_status=leave_req.leave_req_l2_status,
                 created_at=leave_req.leave_req_id
             )
-
-        except Exception as e:
-            # Re-raise the original exception to preserve the error message
+        except HTTPException:
+            # Business-level HTTPExceptions (400/403/404 etc) must propagate as-is
             raise
+        except Exception as e:
+            # Unexpected error inside service -> raise normal Exception so controller treats as 500
+            # Include context for logs, but keep it as a plain Exception
+            raise Exception(f"Service error while creating leave request: {str(e)}")
+
+    #     except Exception as e:
+    #        raise HTTPException(
+    #          status_code=500,
+    #           detail={
+    #         "success": False,
+    #         "message": f"Service error while creating leave request: {str(e)}",
+    #         "error_code": "LEAVE_CREATE_FAILED"
+    # }
+    #    )
+        # except Exception as e:
+        #     raise Exception(f"Service error while creating leave request: {str(e)}")
 
     def get_employee_leave_requests(self, emp_id: int) -> List[LeaveRequestResponse]:
         """Get all leave requests for an employee"""

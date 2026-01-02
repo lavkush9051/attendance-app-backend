@@ -447,14 +447,18 @@ async def create_leave_request(
         print(f"[LOG] /leave-request result: {result}")
         return result
         
-    except HTTPException:
-        session.rollback()
-        raise
-    except ValueError as e:
-        # Date parsing errors
-        session.rollback()
-        print(f"[WARNING] /leave-request validation issue: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+    # except HTTPException:
+    #     session.rollback()
+    #     raise
+    # except Exception as e:
+    #     session.rollback()
+    #     print(f"[ERROR] /leave-request exception: {str(e)}")
+    #     raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException as http_err:
+       session.rollback()
+       print(f"[ERROR] /leave-request HTTPException: {str(http_err.detail)}")
+       raise http_err    # <-- return original structured error
+       
     except Exception as e:
         session.rollback()
         error_msg = str(e)

@@ -4,6 +4,8 @@ import logging
 from app.repositories.attendance_repo import AttendanceRepository
 from app.repositories.employee_repo import EmployeeRepository
 from app.repositories.clock_repo import ClockRepository
+from fastapi import HTTPException, status
+
 
 logger = logging.getLogger(__name__)
 from app.schemas.attendance import (
@@ -68,9 +70,25 @@ class AttendanceService:
             existing_requests = self.attendance_repo.get_by_employee_id(requesting_emp_id)
             for req_tuple in existing_requests:
                 existing_req = req_tuple[0]  # AttendanceRequest object
-                if (existing_req.art_date == request.request_date and 
-                    existing_req.art_status in ['Pending', 'Approved']):
-                    raise Exception(f"Regularization request already exists for {request.request_date}")
+                # if (existing_req.art_date == request.request_date and 
+                #     existing_req.art_status in ['Pending', 'Approved']):
+                #     raise Exception(f"Regularization request already exists for {request.request_date}")
+                if (
+                     existing_req.art_date == request.request_date
+                     and existing_req.art_status in ["Pending", "Approved"]
+                   ):
+                     message = f"Regularization already applied for {request.request_date}."
+
+                     print(f"[ERROR] Regularization overlap: {message}")
+
+                     raise HTTPException(
+                              status_code=status.HTTP_400_BAD_REQUEST,
+                              detail={
+                                   "success": False,
+                                   "message": message,
+                                  "error_code": "REGULARIZATION_OVERLAP",
+                            },
+    )
 
             # Create the request - L1 only workflow
             attendance_req = self.attendance_repo.create(
@@ -100,9 +118,18 @@ class AttendanceService:
                 created_at=attendance_req.art_id  # Using ID as placeholder
             )
 
+        # except Exception as e:
+        #     raise Exception(f"Service error while creating regularization request: {str(e)}")
+        except HTTPException:
+             raise
         except Exception as e:
-            raise Exception(f"Service error while creating regularization request: {str(e)}")
-
+          raise HTTPException(
+                   status_code=500,
+                   detail={
+                        "success": False,
+                     "message": "Service error while creating regularization request"
+                 }
+         ) 
     def get_employee_requests(self, emp_id: int) -> List[AttendanceRequestResponse]:
         """Get all attendance requests for an employee"""
         try:
